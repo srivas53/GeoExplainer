@@ -1,0 +1,1021 @@
+'use strict'; /* globals V2T */
+(function(){
+    class VisualCalibrationInterface extends V2T.Base {
+        constructor() {
+            super();
+            this.isGenerated = false;
+            this.current_widget_id = 0;
+            this.dependent_y = "";
+            this.dependent_y_ui;
+            this.current_x_layer = "";
+            this.mapLayers_x = [];
+
+            /* global data objects */
+            this.geoJsonData;
+            this.globalV2TData;
+            this.rawFeatures = [];
+
+            /* parameter calibration */
+            this.current_Y = {};
+            this.feature_diagnoistic_indicator_list = [];
+            this.highVIF_list = [];
+            //this.normality_results = {};
+            //this.normality_transformed = {};
+            //this.normalityCheckFlag = false;
+
+            this.mainMapObj;
+            this.histogram_Y;
+            this.correlation_Y;
+            this.scatter_matrix;
+        }
+
+        fomatFloat(value, n) {
+            var f = Math.round(value*Math.pow(10,n))/Math.pow(10,n);
+            var s = f.toString();
+            var rs = s.indexOf('.');
+            if (rs < 0) {
+                s += '.';
+            }
+            for(var i = s.length - s.indexOf('.'); i <= n; i++){
+                s += "0";
+            }
+            return s;
+        }
+
+        /**TODO:
+         * 1. mouse hovering visualizations
+         * 2. popups
+         * 3. external information notifications
+         * 4. annotations for each part
+         * 5. other interactions on map such as selecting features by a bounding box**/
+        renderMainMap(mapContainer, layers, data, center_coords, dependent_Y){
+            mapboxgl.accessToken = 'pk.eyJ1Ijoic2FubWlzYW4iLCJhIjoiY2sxOWxqajdjMDB2ZzNpcGR5aW13MDYzcyJ9.WsMnhXizk5z3P2C351yBZQ';
+            let map = new mapboxgl.Map({
+                container: mapContainer,
+                style: 'mapbox://styles/mapbox/light-v10',
+                center: center_coords,
+                minZoom: 2,
+                zoom: 6
+            });
+
+            // Disable default box zooming.
+            map.boxZoom.disable();
+
+            // Create a popup, but don't add it to the map yet.
+            let popup = new mapboxgl.Popup({
+                closeButton: false
+            });
+
+            // Since mapbox has its own this context, we have to store ours in a separate variable
+            const visualCalibrationInterface = this;
+
+            map.on('load', function () {
+
+                map.addSource('counties', {
+                    'type': 'geojson',
+                    "data": data
+                });
+
+                map.addSource('county_points', {
+                    'type': 'geojson',
+                    "data": 'static/data/georgia_demo_points.geojson'
+                });
+
+                map.addLayer({
+                        'id': 'counties',
+                        'type': 'fill',
+                        'source': 'counties',
+                        'paint': {
+                            'fill-outline-color': 'rgba(0,0,0,0.1)',
+                            'fill-color': 'rgba(0,0,0,0.1)'
+                        }
+                    },
+                    'settlement-label'
+                ); // Place polygon under these labels.
+
+                // ADD LAYERS DYNAMICALLY
+                $.each(layers, (index, element) => {
+                    const {property, stops} = element;
+                    map.addLayer({
+                            'id': element.property+'_fill',
+                            'type': 'fill',
+                            'source': 'counties',
+                            'layout': {
+                                'visibility': 'none',
+                            },
+                        },
+                        'settlement-label'
+                    ); // Place polygon under these labels.
+
+                    map.setPaintProperty(property+'_fill', 'fill-outline-color', 'rgba(0,0,0,0.1)');
+
+                    map.setPaintProperty(property+'_fill', 'fill-color', {
+                        property,
+                        stops
+                    });
+                    //map.setFilter(property, ['in', 'UID', '1001', '1007', '1009']);
+                });
+                map.setLayoutProperty(dependent_Y+'_fill', 'visibility', 'visible');
+
+                //ADD CIRCLES FOR INDEPENDENT VARIABLES
+                $.each(layers, (index, element) => {
+                    const {property, circle_stops} = element;
+                    let stops = circle_stops;
+                    map.addLayer({
+                            'id': element.property+'_circle',
+                            'type': 'circle',
+                            'source': 'county_points',
+                            'layout': {
+                                'visibility': 'none',
+                            },
+                        },
+                        'settlement-label'
+                    ); // Place polygon under these labels.
+
+                    map.setPaintProperty(property+'_circle', 'circle-color', 'rgba(116,196,118,0.8)');
+
+                    map.setPaintProperty(property+'_circle', 'circle-radius', {
+                        property,
+                        stops
+                    });
+                    //map.setFilter(property, ['in', 'UID', '1001', '1007', '1009']);
+                });
+                map.setLayoutProperty(visualCalibrationInterface.current_x_layer+'_circle', 'visibility', 'visible');
+
+            });
+
+            /* select independent variable from dropdown menu */
+            let checked_list = "";
+            $('#active_variable_dropdown_config a').click(function () {
+                map.setLayoutProperty(visualCalibrationInterface.current_x_layer+'_circle', 'visibility', 'none');
+                $('#active_variable_dropdown_config a.active').removeClass("active");
+                visualCalibrationInterface.current_x_layer = "";
+                let clicked_layer = $(this).text()+'_circle';
+                let visibility = map.getLayoutProperty(clicked_layer, 'visibility');
+                if (visibility === 'visible') {
+                    map.setLayoutProperty(clicked_layer, 'visibility', 'none');
+                    checked_list = "";
+                    $(this).removeClass("active");
+                }else{
+                    if (checked_list === "") {
+                        checked_list = clicked_layer;
+                    }else{
+                        map.setLayoutProperty(checked_list, 'visibility', 'none');
+                        $('#active_variable_dropdown_menu_config').children().each(function (i, n) {
+                            var obj = $(n);
+                            obj.removeClass("active");
+                        });
+                        checked_list = clicked_layer;
+                    }
+                    $(this).addClass("active");
+                    map.setLayoutProperty(clicked_layer, 'visibility', 'visible');
+                    visualCalibrationInterface.current_x_layer = $(this).text();
+                    $('#dropdown_config_text').text('Variable X: '+visualCalibrationInterface.current_x_layer);
+
+                    /* render correlation scatter plot */
+                    visualCalibrationInterface.correlation_Y.renderCorrelationY(visualCalibrationInterface.dependent_y, visualCalibrationInterface.current_x_layer);
+
+                    /* request pearson correlation results */
+                    fetch('/models/api/v0.1/calibration/correlation/'+visualCalibrationInterface.dependent_y+'+'+visualCalibrationInterface.current_x_layer).then(function (response) {
+                        if (response.ok) {
+                            response.json().then(function (data) {
+                                let pearsonResults = data.pearson_results;
+                                let correlation_coefficient = pearsonResults.correlation_coefficient;
+                                let p_value = pearsonResults.p_value;
+                                $('#pearson_coefficient_id').text(correlation_coefficient);
+                                $('#pearson_pValue_id').text(p_value);
+                            });
+                        } else {
+                            console.log('request failed, error code: ', response.status);
+                        }
+                    }, function(err) {
+                        console.log('ERROR：', err);
+                    });
+                }
+
+            });
+            return map;
+        }
+
+        getCountyCenter(geojson_data){
+            let geo_data = geojson_data['features'];
+            let long = 0;
+            let lat = 0;
+            let count = geo_data.length;
+            $.each(geo_data, (index, element) => {
+                long = long + element['properties']['Long_'];
+                lat = lat + element['properties']['Lat'];
+            });
+            let center_coords = [long/count, lat/count];
+            return center_coords;
+        }
+
+        renderIndependentVariableConfigWidget(current_row_id, independent_x_list){
+            const visualCalibrationInterface = this;
+            const card_id = current_row_id + '_configVIFWidget';
+            const widget_id = current_row_id + "_mainVIFContent";
+
+            const row_template = $(`
+            <div class="card" id="${card_id}" style="margin-bottom: 0.5rem;">
+                <div class="card-header" style="height: 2rem; padding: 0.2rem 0.3rem;">
+                    <div id="configVIFWidget" style="float: left; margin: .2em .5em;">Multicollinearity Detection of Independent X</div>
+                    <input type="hidden" id="current_row_id" name="current_row_id" value="${current_row_id}">
+                    <button id="remove_id_VIF" type="button" class="ml-2 close drag-cancel" style="font-size: 1rem;" aria-label="Close">
+                        <span aria-hidden="true" class="card_close">&times;</span>
+                    </button>             
+                </div>
+                <div id="${widget_id}" class="card-body" style="padding: 0.5rem;">
+                    <div id="VIF_matrix_container" class="second_row_card drag-cancel"></div>
+                    <div id="VIF_value_container" class="second_row_card drag-cancel">
+                        <table class="table">
+                              <thead>
+                                <tr>
+                                  <th scope="col">Independent Variables</th>
+                                  <th scope="col">VIF</th>
+                                  <th scope="col">Operation advice</th>
+                                </tr>
+                              </thead>
+                              <tbody id="VIF_independent_content"></tbody>
+                        </table>
+                        <ul class="list-group list-group-flush">
+                            <li class="list-group-item" id="skewness_test">
+                                <span class="ti-light-bulb" style="margin-right: 1rem;"></span>
+                                <span>Detecting Multicollinearity with Variance Inflation Factor(VIF)...Discussion on Friday's meeting about text notations.</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            `);
+            $('#model_config').append(row_template);
+
+
+
+            /* show VIF results */
+            fetch('/models/api/v0.1/calibration/VIF/'+independent_x_list).then(function (response) {
+                if (response.ok) {
+                    response.json().then(function (data) {
+                        let VIF_results = data.VIF_results;
+                        let VIF_list = VIF_results.VIF_list;
+                        $.each(independent_x_list, (index, element) => {
+                            let VIF_value = VIF_list[index];
+                            let VIF_advice = '';
+                            if(VIF_value > 10){
+                                VIF_advice = "high multicollinearity!"
+                            }else{
+                                VIF_advice = ""
+                            }
+                            let VIF_temp = $(`
+                            <tr>
+                                <td id="VIF_independent_features_id">${element}</td>
+                                <td id="VIF_values_id">${VIF_value}</td>
+                                <td id="advice_button_VIF">${VIF_advice}</td>
+                            </tr>    
+                            `);
+                            $('#VIF_independent_content').append(VIF_temp);
+                        });
+
+                        console.log(data);
+                    });
+                } else {
+                    console.log('request failed, error code: ', response.status);
+                }
+            }, function(err) {
+                console.log('ERROR：', err);
+            });
+        }
+
+        renderMapWidget(current_row_id, dependent_Y, independent_x){
+            const visualCalibrationInterface = this;
+            const card_id = current_row_id + '_configMapWidget';
+            const widget_id = current_row_id + "_mainMapContent";
+            const map_id = "config_map";
+            const distributionY_id = "config_distributionY";
+            const histogram_id = "config_histogram_Y";
+            const correlation_id = "config_correlation_Y";
+            const pearson_analysis_id = "pearson_Y";
+            const param_calibration_y_id = "param_calibration_y";
+
+            const row_template = $(`
+            <div class="card" id="${card_id}" style="margin-bottom: 0.5rem;">
+                <div class="card-header" style="height: 2rem; padding: 0.2rem 0.3rem;">
+                    <div id="configMapWidget" style="float: left; margin: .2em .5em;">Relationships between dependent Y and independent variables</div>
+                    <button class="btn btn-sm ml-3" type="button" id="dropdownMenuButton_config" 
+                    style="position: relative; float: left;">
+                            <i class="ti-map-alt"></i> Dependent Variable Y : ${dependent_Y}
+                    </button>
+                    <div class="dropdown ml-3" id="active_variable_dropdown_config" style="float: left;">
+                        <button class="btn btn-sm dropdown-toggle" type="button"
+                            id="dropdownMenuButton_config"
+                            data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                            <i class="ti-map-alt"></i> <span id="dropdown_config_text">Independent Variable X</span>
+                        </button>
+                        <div class="dropdown-menu" id="active_variable_dropdown_menu_config"
+                            aria-labelledby="dropdownMenuButton_config">
+                            <h6 class="dropdown-header">Choose a variable X to display on the map</h6>
+                        </div>
+                    </div>
+                    <input type="hidden" id="current_row_id" name="current_row_id" value="${current_row_id}">
+                    <button id="remove_id_config" type="button" class="ml-2 close drag-cancel" style="font-size: 1rem;" aria-label="Close">
+                        <span aria-hidden="true" class="card_close">&times;</span>
+                    </button>             
+                </div>
+                <div id="${widget_id}" class="card-body" style="padding: 0.5rem;">
+                    <div id="${map_id}" class="config_map drag-cancel"></div>
+                    <div id="${distributionY_id}" class="subplot drag-cancel">
+                        <div id="${histogram_id}" class="drag-cancel" style="height: 15rem;"></div>
+                        <div id="${param_calibration_y_id}" class="drag-cancel" style="height: 15rem;">
+                            <table class="table">
+                              <thead>
+                                <tr>
+                                  <th scope="col">Normality test [95% confidence inteval]</th>
+                                  <th scope="col">Skewness test</th>
+                                  <th scope="col">Operation advice</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                <tr>
+                                  <td id="normality_test_id"></td>
+                                  <td id="skewness_test_id"></td>
+                                  <td id="advice_button_normality"><button type="button" class="btn btn-secondary btn-sm" id="param_calibration_y_btn"></button></td>
+                                </tr>
+                              </tbody>
+                            </table>
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item" id="skewness_test">
+                                    <span class="ti-light-bulb" style="margin-right: 1rem;"></span>
+                                    <span>Model parameter choise recommendations in text...Discussion on Friday's meeting about text notations.</span>
+                                </li>
+                            </ul>
+                            <!--<ul class="list-group list-group-flush">
+                                <li class="list-group-item" id="skewness_test">Skewness test: <span> p = 0.05 </span> </li>
+                                <li class="list-group-item" id="shapiro_wilk_test">Shapiro-Wilk test for normality: 
+                                    <span> p = 0.05 </span> 
+                                </li>
+                                <li class="list-group-item" id="param_calibration_y_advice">Some operation recommendations: 
+                                    <button type="button" class="btn btn-secondary btn-sm" id="param_calibration_y_btn">Log Transformation</button> 
+                                </li>
+                            </ul>-->
+                        </div>
+                    </div>
+                    <div id="${correlation_id}" class="drag-cancel subplot" style="height: 15rem; margin-left: 0;"></div>
+                    <div id="${pearson_analysis_id}" class="drag-cancel subplot" style="height: 15rem; width: 49%">
+                            <table class="table">
+                                  <thead>
+                                    <tr>
+                                      <th scope="col">Pearson correlation coefficient</th>
+                                      <th scope="col">p-value</th>
+                                      <th scope="col">Operation advice</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    <tr>
+                                      <td id="pearson_coefficient_id"></td>
+                                      <td id="pearson_pValue_id"></td>
+                                      <td class="table-success">Need Discussion (background color mark recommend or not)</td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+                                <ul class="list-group list-group-flush">
+                                    <li class="list-group-item" id="skewness_test">
+                                        <span class="ti-light-bulb" style="margin-right: 1rem;"></span>
+                                        <span>Model parameter choise recommendations in text...</span>
+                                    </li>
+                                </ul>
+                        </div>
+                </div>
+            </div>
+            `);
+            // TODO: Do I need to notify the confidence inteval of p = 0.05?
+            $('#model_config').prepend(row_template);
+
+            /* append independent x variables to dropdown menu */
+            $('#active_variable_dropdown_menu_config').children().remove();
+            $.each(independent_x, (index, element) => {
+                if(index === 0){
+                    $('#active_variable_dropdown_menu_config').append(
+                        $(`<a class="dropdown-item active" href="#">${element}</a>`)
+                    );
+                    this.current_x_layer = element;
+                    $('#dropdown_config_text').text('Variable X: '+this.current_x_layer);
+                    //console.log(this.current_x_layer);
+                }else{
+                    $('#active_variable_dropdown_menu_config').append(
+                        $(`<a class="dropdown-item" href="#">${element}</a>`)
+                    );
+                }
+            });
+
+            /* show normality test results */
+            fetch('/models/api/v0.1/calibration/normality/'+dependent_Y).then(function (response) {
+                if (response.ok) {
+                    response.json().then(function (data) {
+                        let normality_results = data.normality_results;
+                        visualCalibrationInterface.normality_results = normality_results;
+                        let data_Y = normality_results.Y;
+                        let kstest_pValue = normality_results.p_value;
+                        let kstest_skewness = normality_results.skewness;
+                        $('#normality_test_id').text('p-value: '+kstest_pValue);
+                        $('#skewness_test_id').text(kstest_skewness);
+                        if(kstest_skewness > 0){
+                            $('#param_calibration_y_btn').text('Log Transformation');
+                        }else{
+                            $('#param_calibration_y_btn').text('Square Root Transformation');
+                        }
+                        //console.log(data_Y);
+                    });
+                } else {
+                    console.log('request failed, error code: ', response.status);
+                }
+            }, function(err) {
+                console.log('ERROR：', err);
+            });
+
+            /* log transform button click event */
+            $('#advice_button_normality button').click(function (){
+                if(visualCalibrationInterface.normalityCheckFlag === false){
+                    fetch('/models/api/v0.1/calibration/normality/log-transform/'+dependent_Y).then(function (response) {
+                        if (response.ok) {
+                            response.json().then(function (data) {
+                                let normality_results = data.normality_results;
+                                visualCalibrationInterface.normality_transformed = normality_results;
+                                let data_Y = normality_results.Log_Y;
+                                let kstest_pValue = normality_results.p_value;
+                                let kstest_skewness = normality_results.skewness;
+                                $('#normality_test_id').text('p-value: '+kstest_pValue);
+                                $('#skewness_test_id').text(kstest_skewness);
+                                visualCalibrationInterface.histogram_Y.renderHistogram(visualCalibrationInterface.dependent_y,data_Y);
+                                $('#param_calibration_y_btn').text('Show original Y distribution');
+                                visualCalibrationInterface.normalityCheckFlag = true;
+                                //console.log(visualCalibrationInterface.normalityCheckFlag);
+                            });
+                        } else {
+                            console.log('request failed, error code: ', response.status);
+                        }
+                    }, function(err) {
+                        console.log('ERROR：', err);
+                    });
+                }else{
+                    let normality_results = visualCalibrationInterface.normality_results;
+                    visualCalibrationInterface.histogram_Y.renderHistogram(visualCalibrationInterface.dependent_y,normality_results.Y);
+                    let kstest_pValue = normality_results.p_value;
+                    let kstest_skewness = normality_results.skewness;
+                    $('#normality_test_id').text('p-value: '+kstest_pValue);
+                    $('#skewness_test_id').text(kstest_skewness);
+                    if(kstest_skewness > 0){
+                        $('#param_calibration_y_btn').text('Log Transformation');
+                    }else{
+                        $('#param_calibration_y_btn').text('Square Root Transformation');
+                    }
+                    visualCalibrationInterface.normalityCheckFlag = false;
+                }
+            });
+        }
+
+        /* Phase 1 - generate global V2T data object */
+        generateGlobalDataObj(data_obj){
+            this.globalV2TData = data_obj.globalData;
+            this.geoJsonData = data_obj.geojson_data;
+            let properties = this.globalV2TData.globalDataSet.fieldData.scalarNames;
+            this.globalV2TData.getMapDataScales(properties);
+            this.globalV2TData.getMapCircleScales(properties);
+            console.log("dataModel was set");
+            console.log(this.globalV2TData);
+        }
+
+        generateCorrelationConfigMap(data_obj){
+
+        }
+
+        /* Phase 2 - model parameter configurations, computing correlations, VIF */
+        // generate sortable original feature list
+        generateFeatureListUI(featureList){
+            const visualCalibrationInterface = this;
+            $.each(featureList, (index, element) => {
+                let featureElements = $(`
+                <li class="list-group-item list-group-item-action p-2" id="draggable_feature_li_${element}" title="${element}">
+                    <div class="d-flex w-100 justify-content-between" id="draggable_feature_content_${element}">
+                        <div class="p-1 flex-fill bd-highlight" id="draggable_feature_content_${element}_name">${element}</div>
+                        <div class="p-1 flex-fill bd-highlight" id="draggable_feature_content_${element}_histogram" data-container="body" data-toggle="popover" data-placement="top"></div>
+                        <div class="p-1 flex-fill bd-highlight" id="draggable_feature_content_${element}_VIF" data-toggle="tooltip" data-placement="top" title=""></div>
+                        <div class="p-1 flex-fill bd-highlight" id="draggable_feature_content_${element}_modelRecommend" style="display: none;"></div>
+                        <div class="p-1 flex-fill bd-highlight" id="draggable_feature_content_${element}_transform" style="display: none;">
+                            <button type="button" class="btn btn-secondary btn-sm" id="param_calibration_y_btn_${element}"></button>
+                        </div>
+                        <div class="p-1 flex-fill bd-highlight" id="draggable_correlation_${element}" style="display: none;">
+                            <button type="button" class="btn btn-secondary btn-sm" id="correlation_btn_${element}">Correlation with Y</button>
+                        </div>
+                        <div class="p-1 flex-fill bd-highlight" id="draggable_feature_content_${element}_advice" style="display: none;"></div>
+                    </div>
+                </li>
+                `);
+                $('#sortable_rawFeatures_config').append(featureElements);
+
+                // function of show correlation between X and Y
+                $('#correlation_btn_'+element).click(function (){
+                    if(visualCalibrationInterface.dependent_y !== ""){
+                        visualCalibrationInterface.correlation_Y = new V2T.scatter_plot(
+                            visualCalibrationInterface.globalV2TData.globalDataSet, 'correlation_scatter_content_id', this);
+                        visualCalibrationInterface.correlation_Y.renderCorrelationY(visualCalibrationInterface.dependent_y, element);
+                        let correlation_caption =
+                            'Correlation of Y ['+ visualCalibrationInterface.dependent_y +'] and X ['+ element +']';
+                        $('#correlation_scatter_head h6').text(correlation_caption);
+
+                        /* request pearson correlation results */
+                        fetch('/models/api/v0.1/calibration/correlation/'+visualCalibrationInterface.dependent_y+'+'+element).then(function (response) {
+                            if (response.ok) {
+                                response.json().then(function (data) {
+                                    let pearsonResults = data.pearson_results;
+                                    let correlation_coefficient = pearsonResults.correlation_coefficient;
+                                    let p_value = pearsonResults.p_value;
+                                    $('#pearson_value').text(correlation_coefficient);
+                                    $('#pearson_p_value').text(p_value)
+                                    $('#correlation_scatter_table').show();
+                                    // text notation related to pearson value
+                                });
+                            } else {
+                                console.log('request failed, error code: ', response.status);
+                            }
+                        }, function(err) {
+                            console.log('ERROR：', err);
+                        });
+
+                    }
+                    //let globalData = this.globalV2TData;
+                    //this.correlation_Y = new V2T.scatter_plot(this.globalV2TData.globalDataSet, 'config_correlation_Y', this);
+                    //this.correlation_Y.renderCorrelationY(this.dependent_y, element);
+                });
+            });
+
+            $('[data-toggle="popover"]').popover();
+            $('[data-toggle="tooltip"]').tooltip()
+        }
+
+        normalityTest(featureList){
+            const visualCalibrationInterface = this;
+            /* show normality test results */
+            fetch('/models/api/v0.1/calibration/normality/'+featureList).then(function (response) {
+                if (response.ok) {
+                    response.json().then(function (data) {
+                        let normality_result_list = data.normality_results;
+                        // save test result into object
+                        $.each(normality_result_list, (index, element) => {
+                            let histogram_dom = 'draggable_feature_content_'+ element.feature +'_histogram';
+                            let normality_pValue = element.p_value;
+                            let normality_skew = element.skewness;
+                            $('#' + histogram_dom).attr('data-content','p-value: '+normality_pValue+', skewness: '+ normality_skew);
+                            let miniHistogram_Y = new V2T.BarChart(visualCalibrationInterface.globalV2TData.globalDataSet, histogram_dom, visualCalibrationInterface);
+                            let data_Y = visualCalibrationInterface.globalV2TData.globalDataSet.pointData[element.feature].data;
+                            miniHistogram_Y.renderMiniHistogram(data_Y);
+
+                            let feature_diagnoistic_indicator = {
+                                'feature': element.feature,
+                                'normality_results': element,
+                                'miniHistogram_Y': miniHistogram_Y,
+                                'normalityCheckFlag': false
+                            };
+                            visualCalibrationInterface.feature_diagnoistic_indicator_list.push(feature_diagnoistic_indicator);
+                        });
+                        //console.log(visualCalibrationInterface.feature_diagnoistic_indicator_list);
+                    });
+                } else {
+                    console.log('request failed, error code: ', response.status);
+                }
+            }, function(err) {
+                console.log('ERROR：', err);
+            });
+
+        }
+
+        multicollinearity(featureList){
+            const visualCalibrationInterface = this;
+            let notation_word = '<p><span class="ti-info-alt" style="font-size: 15px; color: red; margin-right: 5px;"></span>' +
+                'The following features have high multicollinearities:</p>';
+            $('#scatter_matrix_notation_id').prepend(notation_word);
+
+            /* fetch VIF values */
+            fetch('/models/api/v0.1/calibration/VIF/'+featureList).then(function (response) {
+                if (response.ok) {
+                    response.json().then(function (data) {
+                        let VIF_results = data.VIF_results;
+                        let VIF_list = VIF_results.VIF_list;
+
+                        $.each(featureList, (index, element) => {
+                            let vif_dom = 'draggable_feature_content_'+ element +'_VIF';
+                            let VIF_value = visualCalibrationInterface.fomatFloat(VIF_list[index],2);
+                            let VIF_advice = '';
+                            if(VIF_value > 10){
+                                visualCalibrationInterface.highVIF_list.push(element);
+                                let highVIF_obj_text = ' ['+element+'] ';
+                                $('#highVIF_obj_notation').append(highVIF_obj_text);
+
+                                VIF_advice = '<span class="fa fa-exclamation-triangle" style="font-size: 15px; color: red;"></span>';
+                                $('#' + vif_dom).attr('data-original-title','High Multicollinearity!');
+                                //$('#' + vif_dom).tooltip('enable');
+                            }else{
+                                VIF_advice = "";
+                            }
+                            // TODO: use ICONS to decorate the element
+                            let VIF_temp = $(`
+                                <span>VIF: ${VIF_value}</span>
+                                ${VIF_advice}
+                            `);
+
+                            $('#' + vif_dom).append(VIF_temp);
+
+                            visualCalibrationInterface.feature_diagnoistic_indicator_list[index]['VIF'] = VIF_value;
+                            //console.log(VIF_value);
+                        });
+
+                    });
+                } else {
+                    console.log('request failed, error code: ', response.status);
+                }
+            }, function(err) {
+                console.log('ERROR：', err);
+            });
+
+            // generate notations at scatter matrix panel
+            // notation panel icons
+            let post_notations = '<p>Please only choose one of them as the independent variable X.</p>';
+            $('#scatter_matrix_notation_id').append(post_notations);
+        }
+
+        computingConfigDiagnostic(featureList){
+            this.rawFeatures = featureList
+            // generate original feature list UI with diagnostic indicators
+            this.generateFeatureListUI(this.rawFeatures);
+            // compute in-line histogram with normality & skewness test at first
+            this.normalityTest(this.rawFeatures);
+            // compute VIF of each feature
+            this.multicollinearity(this.rawFeatures);
+
+            console.log(this.feature_diagnoistic_indicator_list);
+        }
+
+        getFeatureDiagnoisticIndicatorObj(featureName){
+            let indicatorObj = {};
+            $.each(visualCalibrationInterface.feature_diagnoistic_indicator_list, (index, element) => {
+                if(element.feature === featureName){
+                    indicatorObj = {
+                        obj: element,
+                        index: index
+                    };
+                    //console.log(indicatorObj);
+                }
+            });
+            return indicatorObj;
+        }
+
+        setFeatureDiagnoisticIndicatorObj(selected_Y_index, Y_feature, Y_content){}
+
+        //TODO: log-transform button click function
+        logTransformY(selected_Y, selected_Y_index, transform_operation){
+            const visualCalibrationInterface = this;
+            let dependent_Y = selected_Y.feature;
+            let miniHistogram_dom = 'draggable_feature_content_'+ dependent_Y +'_histogram';
+            let Y_data_transform_button = 'draggable_feature_content_'+dependent_Y+'_transform';
+            let Y_advice = 'draggable_feature_content_'+dependent_Y+'_advice';
+            let Y_model_recommend = 'draggable_feature_content_'+this.dependent_y+'_modelRecommend';
+            let advice_icon = $(`
+            <span class="ti-info-alt" style="font-size: 20px; color: red; font-weight:bold;"></span>
+            `);
+            let accept_icon = $(`<span class="fa fa-check-circle" style="font-size: 20px; color: green; font-weight:bold;"></span>`);
+            $('#'+Y_advice).children().remove();
+
+            // 根据按钮内容决定log还是sqrt transformation
+            let trans_opoeration = '';
+            if(transform_operation === 'Log Transformation'){
+                trans_opoeration = 'log-transform';
+            }else if(transform_operation === 'Log Transformation'){
+                trans_opoeration = 'sqrt-transform';
+            }
+            // notation panel icons
+            let advice_icon_notation = $(`
+            <span class="ti-info-alt" style="font-size: 15px; color: red; margin-right: 5px;"></span>
+            `);
+            let accept_icon_notation = $(`<span class="fa fa-check-circle" style="font-size: 15px; color: green; margin-right: 5px;"></span>`);
+
+            if(selected_Y.normalityCheckFlag === false){
+                fetch('/models/api/v0.1/calibration/normality/log-transform/'+dependent_Y).then(function (response) {
+                    if (response.ok) {
+                        response.json().then(function (data) {
+                            let normality_results = data.normality_results;
+                            let normality_transformed = normality_results;
+                            let data_Y = normality_results.Log_Y;
+                            let kstest_pValue = normality_results.p_value;
+                            let kstest_skewness = normality_results.skewness;
+                            visualCalibrationInterface.feature_diagnoistic_indicator_list[selected_Y_index]['transformed_normality'] = normality_transformed;
+                            // change related text and plots after transformation
+                            $('#' + miniHistogram_dom).attr('data-content','p-value: '+kstest_pValue+', skewness: '+ kstest_skewness);
+                            selected_Y.miniHistogram_Y.renderMiniHistogram(data_Y);
+                            $('#'+Y_data_transform_button+' button').text('Use original Y');
+                            if(kstest_skewness > 0 && kstest_pValue < 0.05){
+                                $('#'+Y_advice).append(advice_icon);
+                                $('#'+Y_data_transform_button).show();
+                                // add text notation of histogram
+                                $('#histogram_Y_notation_id p').text(
+                                    'Data has a positively skewed distribution. Try log-transformation to normalize the data!');
+                                $('#histogram_Y_notation_id p').prepend(advice_icon_notation);
+                            }else if (kstest_skewness < 0 && kstest_pValue < 0.05){
+                                $('#'+Y_advice).append(advice_icon);
+                                $('#'+Y_data_transform_button).show();
+                                // add text notation of histogram
+                                $('#histogram_Y_notation_id p').text(
+                                    'Right skewness of the data detected! Try square root transformation to normalize the data!');
+                                $('#histogram_Y_notation_id p').prepend(advice_icon_notation);
+                            }else{
+                                //$('#'+Y_data_transform_button).hide();
+                                $('#'+Y_advice).append(accept_icon);
+                                //$('#'+Y_model_recommend).text('Normal distribution');
+                                //$('#'+Y_model_recommend).show();
+                                $('#'+Y_data_transform_button).show();
+                                // add text notation of histogram
+                                $('#histogram_Y_notation_id p').text(
+                                    'Data is normal distribution! Yeah!');
+                                $('#histogram_Y_notation_id p').prepend(accept_icon_notation);
+                            }
+                            visualCalibrationInterface.histogram_Y.renderHistogram(dependent_Y,data_Y);
+                            $('#normality_p_value').text(kstest_pValue);
+                            $('#skew_value').text(kstest_skewness);
+                            visualCalibrationInterface.feature_diagnoistic_indicator_list[selected_Y_index]['normalityCheckFlag'] = true;
+                        });
+                    } else {
+                        console.log('request failed, error code: ', response.status);
+                    }
+                }, function(err) {
+                    console.log('ERROR：', err);
+                });
+            }else{
+                let normality_results = selected_Y.normality_results;
+                let kstest_pValue = normality_results.p_value;
+                let kstest_skewness = normality_results.skewness;
+                let data_Y = normality_results.Y;
+                // change related text and plots after transformation
+                $('#' + miniHistogram_dom).attr('data-content','p-value: '+kstest_pValue+', skewness: '+ kstest_skewness);
+                selected_Y.miniHistogram_Y.renderMiniHistogram(data_Y);
+
+                if(kstest_skewness > 0 && kstest_pValue < 0.05){
+                    $('#'+Y_advice).append(advice_icon);
+                    $('#'+Y_data_transform_button+' button').text('Log Transformation');
+                    $('#'+Y_data_transform_button).show();
+                    // add text notation of histogram
+                    $('#histogram_Y_notation_id p').text(
+                        'Data has a positively skewed distribution. Try log-transformation to normalize the data!');
+                    $('#histogram_Y_notation_id p').prepend(advice_icon_notation);
+                }else if (kstest_skewness < 0 && kstest_pValue < 0.05){
+                    $('#'+Y_advice).append(advice_icon);
+                    $('#'+Y_data_transform_button+' button').text('Square Root Transformation');
+                    $('#'+Y_data_transform_button).show();
+                    // add text notation of histogram
+                    $('#histogram_Y_notation_id p').text(
+                        'Right skewness of the data detected! Try square root transformation to normalize the data!');
+                    $('#histogram_Y_notation_id p').prepend(advice_icon_notation);
+                }else{
+                    //$('#'+Y_data_transform_button).hide();
+                    $('#'+Y_advice).append(accept_icon);
+                    $('#'+Y_model_recommend).text('Normal distribution');
+                    $('#'+Y_model_recommend).show();
+                    // add text notation of histogram
+                    $('#histogram_Y_notation_id p').text(
+                        'Data is normal distribution! Yeah!');
+                    $('#histogram_Y_notation_id p').prepend(accept_icon_notation);
+                }
+
+                visualCalibrationInterface.histogram_Y.renderHistogram(dependent_Y,data_Y);
+                $('#normality_p_value').text(kstest_pValue);
+                $('#skew_value').text(kstest_skewness);
+
+                visualCalibrationInterface.feature_diagnoistic_indicator_list[selected_Y_index]['normalityCheckFlag'] = false;
+            }
+        }
+
+        drop_to_Y_list(dom_obj_Y){
+            if(this.dependent_y_ui == null){
+                // No selected Y yet
+                this.dependent_y_ui = dom_obj_Y;
+                this.dependent_y = dom_obj_Y.attr('title');
+                //console.log(dependent_y);
+            }else{
+                // replace Y with new dropped in feature
+                let old_Y_ui = this.dependent_y_ui
+                let old_Y_name = old_Y_ui.attr('title');
+                this.dependent_y_ui = dom_obj_Y;
+                this.dependent_y = dom_obj_Y.attr('title');
+                old_Y_ui.find('#draggable_feature_content_'+ old_Y_name +'_VIF').show();
+                old_Y_ui.find('#draggable_feature_content_'+old_Y_name+'_transform').hide();
+                $('#draggable_feature_content_'+old_Y_name+'_advice span').remove();
+                $('#draggable_feature_content_'+old_Y_name+'_advice').hide();
+                $('#draggable_feature_content_'+old_Y_name+'_modelRecommend').text('');
+                $('#draggable_feature_content_'+old_Y_name+'_modelRecommend').hide();
+                $('#sortable_Y_config li[title='+old_Y_name+']').remove();
+                $('#sortable_rawFeatures_config').append(old_Y_ui);
+            }
+
+            let selected_Y = this.getFeatureDiagnoisticIndicatorObj(this.dependent_y).obj;
+            let selected_Y_index = this.getFeatureDiagnoisticIndicatorObj(this.dependent_y).index;
+            const visualCalibrationInterface = this;
+
+            // show transform button of Y variable, hidden VIF
+            let normality_pValue = selected_Y.normality_results.p_value;
+            let normality_skew = selected_Y.normality_results.skewness;
+            let vif_dom = 'draggable_feature_content_'+ this.dependent_y +'_VIF';
+            let Y_data_transform_button = 'draggable_feature_content_'+this.dependent_y+'_transform';
+            let Y_model_recommend = 'draggable_feature_content_'+this.dependent_y+'_modelRecommend';
+            let Y_advice = 'draggable_feature_content_'+this.dependent_y+'_advice';
+
+            let advice_icon = $(`
+            <span class="ti-info-alt" style="font-size: 20px; color: red; font-weight:bold;"></span>
+            `);
+            let accept_icon = $(`<span class="fa fa-check-circle" style="font-size: 20px; color: green; font-weight:bold;"></span>`);
+
+            // notation panel icons
+            let advice_icon_notation = $(`
+            <span class="ti-info-alt" style="font-size: 15px; color: red; margin-right: 5px;"></span>
+            `);
+            let accept_icon_notation = $(`<span class="fa fa-check-circle" style="font-size: 15px; color: green; margin-right: 5px;"></span>`);
+
+            $('#'+vif_dom).hide();
+
+            if(normality_skew > 0 && normality_pValue < 0.05){
+                $('#'+Y_data_transform_button+' button').text('Log Transformation');
+                $('#'+Y_advice).append(advice_icon);
+                $('#'+Y_data_transform_button).show();
+                // add text notation of histogram
+                $('#histogram_Y_notation_id p').text(
+                    'Data has a positively skewed distribution. Try log-transformation to normalize the data!');
+                $('#histogram_Y_notation_id p').prepend(advice_icon_notation);
+            }else if (normality_skew < 0 && normality_pValue < 0.05){
+                $('#'+Y_data_transform_button+' button').text('Square Root Transformation');
+                $('#'+Y_advice).append(advice_icon);
+                $('#'+Y_data_transform_button).show();
+                // add text notation of histogram
+                $('#histogram_Y_notation_id p').text(
+                    'Right skewness of the data detected! Try square root transformation to normalize the data!');
+                $('#histogram_Y_notation_id p').prepend(advice_icon_notation);
+            }else{
+                //$('#'+Y_data_transform_button).hide();
+                $('#'+Y_advice).append(accept_icon);
+                $('#'+Y_model_recommend).text('Normal distribution');
+                $('#'+Y_model_recommend).show();
+                // add text notation of histogram
+                $('#histogram_Y_notation_id p').text(
+                    'Data is normal distribution! Yeah!');
+                $('#histogram_Y_notation_id p').prepend(accept_icon_notation);
+            }
+            $('#'+Y_advice).show();
+
+            //Show histogram plot in interface
+            let histogram_dom = 'histogram_Y_content_id';
+            let histogram_Y = new V2T.BarChart(this.globalV2TData.globalDataSet, histogram_dom, this);
+            this.histogram_Y = histogram_Y;
+            let data_Y = this.globalV2TData.globalDataSet.pointData[this.dependent_y].data;
+            histogram_Y.renderHistogram(this.dependent_y,data_Y);
+            $('#histogram_Y_head_id h6').text('Distribution of Y: '+this.dependent_y);
+            $('#normality_p_value').text(normality_pValue);
+            $('#skew_value').text(normality_skew);
+            $('#histogram_Y_content_table').show();
+
+
+
+            //TODO: Popup panel to tell user advised options
+            $('#'+Y_data_transform_button+' button').click(function (){
+                let transform_operation = $('#'+Y_data_transform_button+' button').text();
+                visualCalibrationInterface.logTransformY(selected_Y, selected_Y_index, transform_operation);
+            });
+        }
+
+        generate_scatter_matrix(actived_x_list){
+            if(this.scatter_matrix != null){
+                this.scatter_matrix.chartObj.dispose();
+            }
+            if(actived_x_list.length > 1){
+                //console.log(actived_x_list);
+                this.scatter_matrix = new V2T.scatter_plot(
+                    this.globalV2TData.globalDataSet, 'scatter_matrix_content_id', this);
+                this.scatter_matrix.renderIndependentScatterMatrix(actived_x_list, 'scatter_matrix_content_id');
+            }
+        }
+
+        checkHighVIF(current_x_list, flag){
+            let intersection = current_x_list.filter(v => this.highVIF_list.includes(v))
+            if(intersection.length > 1 && flag){
+                //draggable_feature_li_${element}
+                $.each(intersection, (index, element) => {
+                    let dom = $('#draggable_feature_li_'+element);
+                    dom.addClass('list-group-item-danger');
+                });
+            }else if(intersection.length === 1 && !flag){
+                let dom = $('#draggable_feature_li_'+intersection[0]);
+                dom.removeClass('list-group-item-danger');
+            }
+            //console.log(intersection);
+        }
+
+        // TODO: Make dynamic mini plots and interactions of the correlation between X and Y
+        // QUESTION: Do I still need to display the mini histogram in X list?
+        drop_to_X_list(dom_obj_X){
+            //console.log(dom_obj_Y);
+            let new_droped_x = dom_obj_X.attr('title');
+            this.mapLayers_x.push(new_droped_x);
+            let correlation_btn = 'draggable_correlation_' + new_droped_x;
+            $('#'+correlation_btn).show();
+            //console.log(this.mapLayers_x);
+            this.generate_scatter_matrix(this.mapLayers_x);
+            this.checkHighVIF(this.mapLayers_x, true);
+        }
+
+        leave_X_list(dom_obj_X){
+            let removed_x = dom_obj_X.attr('title');
+            let correlation_btn = 'draggable_correlation_' + removed_x;
+            $('#'+correlation_btn).hide();
+            //remove from x list
+            for(let i=this.mapLayers_x.length-1; i>=0; i--){
+                if(this.mapLayers_x[i] === removed_x)
+                    this.mapLayers_x.splice(i,1);
+            }
+            //console.log(this.mapLayers_x);
+            this.generate_scatter_matrix(this.mapLayers_x);
+            $('#draggable_feature_li_'+removed_x).removeClass('list-group-item-danger');
+            this.checkHighVIF(this.mapLayers_x, false);
+        }
+
+        /**  OLD VERSION **/
+        startModelParamRecommendInterface(model_config_obj){
+            let globalData = model_config_obj.globalData;
+            this.globalV2TData = globalData;
+            let geojson_data = model_config_obj.geojson_data;
+            let properties = globalData.globalDataSet.fieldData.scalarNames;
+            globalData.getMapDataScales(properties);
+            globalData.getMapCircleScales(properties);
+            let view_scales = globalData.mapData_scales;
+            let circle_scales = globalData.mapCircle_scales;
+            let global_layers = [];
+            for (let i = 0; i < properties.length; i++) {
+                let sub_layer = {
+                    name: properties[i],
+                    property: properties[i],
+                    // this should be pre-calculated
+                    //avoid of calculating at web browser
+                    stops: view_scales[properties[i]],
+                    circle_stops: circle_scales[properties[i]]
+                };
+                global_layers.push(sub_layer);
+            }
+
+            /* generate map widget */
+            this.dependent_y = model_config_obj.dependent_Y;
+            this.mapLayers_x = model_config_obj.independent_x;
+            this.renderMapWidget(this.current_widget_id, this.dependent_y, this.mapLayers_x);
+            /* generate main map (dual-variable) for parameter recommendation */
+            let center_coords = this.getCountyCenter(geojson_data);
+            this.mainMapObj = this.renderMainMap(
+                "config_map", global_layers, geojson_data, center_coords, this.dependent_y);
+
+            /* generate histogram of Y */
+            this.histogram_Y = new V2T.BarChart(globalData.globalDataSet, 'config_histogram_Y', this);
+            let data_Y = globalData.globalDataSet.pointData[this.dependent_y].data;
+            this.histogram_Y.renderHistogram(this.dependent_y,data_Y);
+
+            /* generate correlation */
+            /* TODO:
+                1. How do I perform notation such as what correlation is?
+                ADD EXPLANATIONS!!!
+            *   2. Show the correlation bewteen Y and all the independent variables by scatter matrix and table for pearson coefficients?
+                3. OR play correlation of Y and selected independent x one at a time? [lower the congnition loads]*/
+            this.correlation_Y = new V2T.scatter_plot(globalData.globalDataSet, 'config_correlation_Y', this);
+            this.correlation_Y.renderCorrelationY(this.dependent_y, this.current_x_layer);
+            // show pearson correlation results in the table
+            /* request pearson correlation results */
+            fetch('/models/api/v0.1/calibration/correlation/'+this.dependent_y+'+'+this.current_x_layer).then(function (response) {
+                if (response.ok) {
+                    response.json().then(function (data) {
+                        let pearsonResults = data.pearson_results;
+                        let correlation_coefficient = pearsonResults.correlation_coefficient;
+                        let p_value = pearsonResults.p_value;
+                        $('#pearson_coefficient_id').text(correlation_coefficient);
+                        $('#pearson_pValue_id').text(p_value);
+                    });
+                } else {
+                    console.log('request failed, error code: ', response.status);
+                }
+            }, function(err) {
+                console.log('ERROR：', err);
+            });
+
+            /* TODO:
+            *   1. VIF tests for all selected independent x
+            *   2. scatter-matrix for selected independent x */
+            this.renderIndependentVariableConfigWidget(this.current_widget_id, this.mapLayers_x);
+            this.correlation_Y.renderIndependentScatterMatrix(this.mapLayers_x, 'VIF_matrix_container');
+
+            /********************/
+            this.isGenerated = true;
+            this.current_widget_id ++;
+        }
+
+    }
+
+    // Expose VisualAnalyticsInterface
+    window.V2T.VisualCalibrationInterface = VisualCalibrationInterface;
+})();

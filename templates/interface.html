@@ -1,0 +1,792 @@
+{%  extends  "layout.html"  %}
+{%  block  body  %}
+<!-- Navbar -->
+<nav class="navbar navbar-expand-lg navbar-dark" style="background-color: #303641; height: 45px;">
+    <a class="navbar-brand" href="#">GeoExplainer</a>
+
+
+    <div class="param_config_list_head_content" style="width: 150px;">
+        <select class="custom-select custom-select-sm" id="dataset_list" style="font-size: 12px;">
+            <option disabled value="">Select the dataset you want to analyze..</option>
+            <option selected value="georgia">Georgia demo</option>
+            <option value="chicago">Chicago AirBnB</option>
+            <option value="arizona">Arizona</option>
+        </select>
+    </div>
+    <button type="button" id="param_calibration_submit" class="btn btn-primary btn-sm ml-2" style="font-size: 12px;">Load Data</button>
+    <button type="button" id="importCSV" class="btn btn-primary btn-sm ml-2" style="font-size: 12px;">Import Trained CSV</button>
+    <button type="button" id="exportPDF" class="btn btn-primary btn-sm ml-2" style="font-size: 12px;">Export as PDF</button>
+    <!-- VS Add: Allow users to upload their own files REFER -->
+    <p id="msg"></p>
+    <input type="file" id="multiFiles" class="btn btn-primary btn-sm ml-2" style="font-size: 12px;" name="files[]" multiple="multiple"/> 
+    <button type="button" id="uploadFile" class="btn btn-primary btn-sm ml-2" style="font-size: 12px;">Upload File(s)</button> 
+    <button type="button" id="loadSelected" class="btn btn-primary btn-sm ml-2" style="font-size: 12px;">Load Selected Data</button> 
+
+
+    <button class="btn btn-primary btn-sm ml-3" type="button" id="show_report_panel"
+            style="position: relative; display: none;">
+        <i class="far fa-file-pdf"></i> Show Text Report Panel
+    </button>
+    <!-- slider to adjust map layer opacity -->
+    <div class="dropdown" style="font-size: 12px; left: 10%;">
+      <button
+              class="btn btn-primary btn-sm btn-info dropdown-toggle"
+              type="button" id="dropdownMenuButton" data-toggle="dropdown"
+              aria-haspopup="true" aria-expanded="false"
+              style="font-size: 12px;"
+      >
+        Adjust Map Layer Opacity
+      </button>
+      <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+        <!-- Slider to adjust map layer's opacity -->
+        <div class="opacty_slider_container" id="opacty_slider_container">
+            <label for="formControlRange" style="margin-bottom: 0;">Layer opacity: <span id="slider-value">100%</span></label>
+            <input type="range" class="form-control-range" id="formControlRange" min="0" max="100" step="0" value="100">
+        </div>
+      </div>
+    </div>
+</nav>
+<!-- Navbar End -->
+
+<!-- interface content -->
+<!-- VAST Interface -->
+    <div id="loading" >
+        <!-- <img id="loading-image" src="static/img/try1.gif" alt="Loading..." /> -->
+        <div class="justify-content-center" >
+            <div style="position:absolute;top:40vh;left:45vw;">
+                <div class="spinner-border" role="status" style="width: 10rem;height: 10rem;">   
+                </div>
+                <div id="load" style="font-size: 12px;font-weight: bold;font-size-adjust: 100px;display:none;padding-top: 1.5vh;">Loading Map...</div>
+                <div id="train" style="font-size: 12px;font-weight: bold;font-size-adjust: 100px;display:none;padding-top: 1.5vh;">Training the Model...</div>
+            </div>
+          </div>
+         
+      </div>
+<div class="vast_container" id="vast_container_id">
+    <!-- Main VAST panel - map -->
+    <div class="model_map_panel" id="model_map_panel"></div>
+
+    <!-- right part panel container -->
+    <div class="model_details_container" id="model_details_container" style="display: none;">
+        <!-- Text report panel -->
+        <div class="text_report_container_new">
+            <div class="report_head">
+                <span class="_topic" style="float: left">Text Report Panel</span>
+                <a type="button" id="new_paragraph_btn" class="badge badge-success mr-2" style="float: right; font-size: 13px;"><i class="fa fa-plus-square"></i> New paragraph</a>
+            </div>
+            <!-- Text report content part -->
+            <div class="text_report_content_new" id="text_report_content_new">
+                <h6 id="textCursor" style="margin-bottom: 5px;">Report on the dataset</h6>
+            </div>
+            <!-- END of text report content -->
+        </div>
+        <!-- END of text report panel -->
+
+        <!-- Model training history
+        TODO: USing Bootstrap Table-->
+        <div class="model_history_container" id="model_history_container_id" style="display: none;">
+            <div class="model_history_head">
+                <h6 style="float: left; margin-top: 0.5rem;">Trained model history:</h6>
+                <input type="text" placeholder="Search" autocomplete="off" id="modelHistorySearch" style="float: right;">
+            </div>
+            <div class="model_history_content"></div>
+        </div>
+    </div>
+    <!-- END of model config panel container -->
+
+    <!-- Map config legend -->
+    <div class="config_map_circle_legend" id="config_map_circle_legend" style="display: none;"></div>
+    <div class="config_map_choropleth_legend" id="config_map_choropleth_legend" style="display: none;"></div>
+    <div class="config_map_choropleth_legend" id="model_map_legend" style="display: none;"></div>
+
+    <div class="imgCanvas" id="imgCanvas" style="display: none;">
+        <div class="imgCanvas_head" id="imgCanvas_head">
+            <a type="button" id="downloadLink" class="badge badge-success mr-2" style="float: left; font-size: 13px; margin-top: 3px;">Take a snapshot</a>
+            <a type="button" id="hiddenWindows" class="badge badge-warning mr-2" style="float: right; font-size: 13px; margin-top: 3px;">Toggle windows</a>
+        </div>
+        <div class="imgCanvas_content draggable_obj" id="imgCanvas_content"></div>
+    </div>
+
+
+    <div class="config_wrapper" id="left_wrapper">
+        <!------------------------------------------------>
+        <!-- Model config params -->
+        <div class="param_config_list_container" style="padding: 0; margin-bottom: 8px;" id="model_param_config_win">
+            <div class="param_config_list_content_head" style="height: 31px;">
+                <p class="_topic" style="float: left;">Model configuration</p>
+                <a type="button" id="request_model" class="badge badge-success mr-2" style="float: right; font-size: 13px; margin-top: 3px;" data-toggle="tooltip" data-placement="top" title="select Dependent and Independent varaiables">Train model</a>
+            </div>
+            <div style="height: 50px; padding: 5px;">
+                <div class="param_config_list_head_content mr-1" style="width: 150px;">
+                    <select class="custom-select custom-select-sm" id="spatial_kernel" style="font-size: 12px;">
+                        <option disabled value="">Spatial kernel...</option>
+                        <option value="adaptive bisquare" selected>adaptive bisquare</option>
+                        <option value="fixed gaussian">fixed gaussian</option>
+                    </select>
+                </div>
+                <div class="param_config_list_head_content mr-1" style="width: 110px;">
+                    <select class="custom-select custom-select-sm" id="model_type" style="font-size: 12px;">
+                        <option disabled value="">Model type...</option>
+                        <option value="gaussian" selected>Gaussian</option>
+                        <option value="binomal">Binomal</option>
+                        <option value="poisson">Poisson</option>
+                    </select>
+                </div>
+                <div class="param_config_list_head_content" style="width: 100px;">
+                    <select class="custom-select custom-select-sm" id="gwr_mgwr" style="font-size: 12px;">
+                        <option disabled value="">Use GWR or MGWR model?</option>
+                        <option selected value="gwr">GWR</option>
+                        <option value="mgwr">MGWR</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        <!-- END of model config params -->
+        <div class="param_config_list_container" style="margin-bottom: 8px;" id="model_variable_config_win">
+            <div class="param_config_list_content" style="margin-bottom: 8px;">
+                <!-- Dependent Y list -->
+                <div class="param_config_list_content_head">
+                    <p class="_topic">Dependent Variable Y</p>
+                </div>
+                <ul class="list-group connectedSortable" id="sortable_Y_config" style="min-height: 50px; background-color: #ffffff;"></ul>
+                <!-- END of dependent Y list -->
+                <!-- Independent X list -->
+                <div class="param_config_list_content_head">
+                    <p class="_topic">Independent Variable X</p>
+                </div>
+                <div style="max-height: 200px; overflow: auto;">
+                    <ul class="list-group connectedSortable" id="sortable_X_config" style="min-height: 50px; background-color: #ffffff;"></ul>
+                </div>
+                <!-- END of independent X list -->
+            </div>
+            <!-- Original feature list -->   <!-- VS: Disable-->   
+            <div class="param_config_list_content">
+                <div class="param_config_list_content_head">
+                    <p class="_topic">Original Feature List</p>
+                </div>
+                <div style="max-height: 200px; overflow: auto;">
+                    <ul class="list-group connectedSortable" id="sortable_rawFeatures_config" style="min-height: 50px; background-color: #ffffff;"></ul>
+                </div>
+            </div>
+            <!-- END of original feature list -->
+        </div>
+        <!-- Original Data Table -->
+        <div class="original_data_table_container" id="original_data_table_container">
+            <div class="original_data_table_content">
+                <h6 id="original_table_header" style="float: left; font-size:14px; margin-top: 8px">Original Data Table:</h6>
+                <a type="button" id="origin_refresh" class="badge badge-success ml-2" style="float: right; font-size: 13px; margin-top: 14px;"><i class="fa fa-refresh"></i></a>
+                <table id="original_data_table_id"
+                       data-height="200"
+                       data-toolbar="#original_table_header"
+                ></table>
+            </div>
+        </div>
+        <!-- END of Original data table -->
+    </div>
+    <!-- model config VIS -->
+    <div class="config_VIS_wrapper" id="upper_wrapper">
+        <!-- Model analysis panels -->
+        <div class="model_diagnostic_container" id="model_diagnostic_container" style="display: none;">
+            <div class="model_diagnostic_head" id="model_diagnostic_head">
+                <p class="_topic">Model Explanation</p>
+            </div>
+            <div class="model_diagnostic_notation" id="model_diagnostic_notation"></div>
+        </div>
+        <!--END of model analysis panels-->
+
+        <!-- External information panel -->
+        <div class="external_info_container" id="external_info_container" style="display: none;">
+            <div class="external_info_head" id="external_info_head">
+                <span class="_topic" style="float: left">External Information</span>
+                <!--<a type="button" id="copy_external_btn" class="badge badge-success mr-2" style="float: right; font-size: 13px;">Clone</a>-->
+            </div>
+            <div class="external_info_content" id="external_info_content"></div>
+        </div>
+        <!-- END of external information panel -->
+
+        <!-- Histogram panel -->
+        <div class="histogram_Y" id="histogram_Y_id" style="visibility: hidden;">
+            <div class="histogran_Y_content_wrapper">
+                <div class="histogram_Y_head" id="histogram_Y_head_id">
+                    <p class="_topic">Distribution of Y</p>
+                </div>
+                <div class="histogram_Y_content" id="histogram_Y_content_id"></div>
+            </div>
+            <div class="histogram_Y_notation" id="histogram_Y_notation_id">
+                <ul class="list-unstyled mb-2" id="histogram_Y_content_table" style="margin-left: 5px; margin-right: 5px; display: none;">
+                    <li>Normality test (95%): <span id="normality_p_value" style="float: right;"></span></li>
+                    <li>Skewness: <span id="skew_value" style="float: right;"></span></li>
+                </ul>
+                <p></p>
+            </div>
+        </div>
+        <!-- END of histogram panel -->
+        <!-- Correlation of Y and X panel -->
+        <div class="correlation_scatter_container" id="correlation_scatter_container" style="visibility: hidden;">
+            <div class="correlation_scatter_content_wrapper">
+                <div class="correlation_scatter_head" id="correlation_scatter_head">
+                    <p class="_topic">Correlation of Y and X</p>
+                </div>
+
+                <div class="correlation_scatter_content" id="correlation_scatter_content_id"></div>
+            </div>
+
+            <div class="correlation_scatter_notation" id="correlation_scatter_notation_id">
+                <ul class="list-unstyled mb-2" id="correlation_scatter_table" style="margin-left: 5px; margin-right: 5px; display: none;">
+                    <li>Pearson coefficient: <span id="pearson_value" style="float: right; margin-left: 10px;"></span></li>
+                    <li>p-value (95%): <span id="pearson_p_value" style="float: right;"></span></li>
+                </ul>
+                <div id="xy_correlation_annotation"></div>
+            </div>
+        </div>
+        <!-- END of correlation of Y and X panel -->
+        <!-- Scatter Matrix panel -->
+        <div class="scatter_matrix_container" id="scatter_matrix_container_id">
+            <div class="scatter_matrix_notation" id="scatter_matrix_notation_id">
+                <b><p id="highVIF_obj_notation"></p></b>
+            </div>
+            <div class="scatter_matrix_head" id="scatter_matrix_head">
+                <p class="_topic">Correlations of X</p>
+            </div>
+            <!--<div class="scatter_matrix_wrapper" style="display: none;">
+                <div class="scatter_matrix_head" id="scatter_matrix_head">
+                    <p class="_topic">Correlations of X</p>
+                </div>
+                <div class="scatter_matrix_notation" id="scatter_matrix_notation_id" style='display: none;'>
+                    <b><p id="highVIF_obj_notation"></p></b>
+                </div>
+            </div>-->
+            <div class="scatter_matrix_content" id="scatter_matrix_content_id"></div>
+        </div>
+        <!-- END of scatter matrix panel -->
+    </div>
+    <!-- END of model config VIS -->
+    <!-- END of main VAST panel -->
+</div>
+<!-- VAST Interface End -->
+
+<!-- Text Report Interface -->
+<!--<div class="report_container" id="report_container_id">
+    <div class="report_head">
+        <h6 style="float: left; margin-top: 0.5rem;">Text Report Panel</h6>
+    </div>
+    <div class="report_content"></div>
+</div>-->
+<!-- Text Report Interface End -->
+<!-- interface content end-->
+
+<!-- Popup menus -->
+<div id="external_menu">
+    <div type="button" id="copy_external_btn" class="external_menu">Copy to report panel</div>
+</div>
+
+<!-- MAIN JS PART -->
+<script type="text/javascript">
+$('#request_model').tooltip('disable');
+    const ignore_properties = ['county_name', 'state_name', 'UID', 'Long_', 'Lat', 'ID', 'name','county']; //VS: Add non numberical features to be ignored here
+    const { jsPDF } = window.jspdf;
+    let new_paragraph_index = 0;
+    let yselected=false;
+    let xselected=false;
+    /* preloading area */
+    let visualCalibrationInterface = new V2T.VisualCalibrationInterface();
+    let modelAnalysisInterface = new V2T.ModelAnalysisInterface();
+    let textGeneration = new V2T.TextGeneration();
+    let modelFromCSV = new V2T.ModelFromCSV();
+    //let textReport = new V2T.TextReport();
+    // VAST listeners
+    //** parameter configuration part **//
+    // Phase 1 - generate global V2T data object
+    visualCalibrationInterface.on('generate_V2T_global_object',
+        data_obj => visualCalibrationInterface.generateGlobalDataObj(data_obj));
+    // Phase 2 - model parameter configurations, computing correlations, VIF //VS: Need to disable this
+    visualCalibrationInterface.on('computing_configuration_diagnostic',
+        data_obj => visualCalibrationInterface.computingConfigDiagnostic(data_obj));
+    // Phase 3 - Y related visualizations
+    visualCalibrationInterface.on('drop_to_Y_list', //VS: These could be different features with different data sources
+        data_obj => visualCalibrationInterface.drop_to_Y_list(data_obj));
+    // Phase 4 - X related visualizations
+    // Correlation between X and Y by scatter plot
+    // Scatter matrix for inter-X correlation [VIF]
+    visualCalibrationInterface.on('drop_to_X_list',
+        data_obj => visualCalibrationInterface.drop_to_X_list(data_obj));
+    visualCalibrationInterface.on('leave_X_list',
+        data_obj => visualCalibrationInterface.leave_X_list(data_obj));
+    // Phase 5 - Generate a map to show correlation between X and Y
+    visualCalibrationInterface.on('correlation_config_map_generation', //Vs: Need to disable this
+        data_obj => visualCalibrationInterface.generateCorrelationConfigMap(data_obj));
+    // TODO: Discuss do I need a panel to show original data table?
+
+    //** Model analysis part **//
+    // Phase 1 - Upload model training parameters and train the model
+    modelAnalysisInterface.on('generate_model_results',
+        data_obj => modelAnalysisInterface.generateModelResults(data_obj));
+    // Phase 2 - Export from a CSV file
+    modelFromCSV.on('generate_model_from_CSV',
+        data_obj => modelFromCSV.generateModelResults(data_obj));
+
+    // Text report listeners
+    // Phase 1 - Generate global data summary
+    textGeneration.on('general_text_generation',
+        data_obj => textGeneration.generateGeneralTextNotation(data_obj));
+    // Phase 2 - Generate report text paragraph
+    textGeneration.on('render_report_paragraph',
+        data_obj => textGeneration.renderReportParagraph(data_obj));
+    //Phase 3 - Render external information
+    textGeneration.on('render_external_info',
+        data_obj => textGeneration.renderExternalInfo(data_obj));
+    /* end of preloading area */
+
+    /* Import MGWR results from a CSV file */
+    $('#importCSV').click(function(){
+        let fpath = "{{ url_for('static', filename='data/2016Election_new.json') }}";
+        modelFromCSV.trigger('generate_model_from_CSV', fpath);
+        $('#model_map_legend').css('left', '0.4vw');
+        $('#model_map_legend').css('bottom', '0.5vw');
+    });
+
+    //Enabling the user to upload their own files (VS Add)
+$(document).ready(function (e) {
+        $('#uploadFile').on('click', function () {
+            var form_data = new FormData();
+            var ins = document.getElementById('multiFiles').files.length;
+                
+            if(ins == 0) {
+                $('#msg').html('<span style="color:red">Select at least one file</span>');
+                return;
+            }
+                
+            for (var x = 0; x < ins; x++) {
+                form_data.append("files[]", document.getElementById('multiFiles').files[x]);
+            }
+                
+            $.ajax({
+                url: '/upload', // point to server-side URL
+                dataType: 'json', // what to expect back from server
+                cache: false,
+                contentType: false,
+                processData: false,
+                data: form_data,
+                type: 'post',
+                success: function (response) { // display success response
+                    $('#msg').html('');
+                    $.each(response, function (key, data) {                         
+                        if(key !== 'message') {
+                            $('#msg').append(key + ' -> ' + data + '<br/>');
+                        } else {
+                            $('#msg').append(data + '<br/>');
+                        }
+                    })
+                },
+                error: function (response) {
+                    $('#msg').html(response.message); // display error response
+                }
+            });
+            
+
+        });
+    });
+            
+    //VS add: In the function below, enable an entire new possibility of importing data as is, and define a new class of maploader, which loads mapbox with the geojson data it needs
+//Invoke mapBox.js here,  extract the filename of the uploaded file, store it in a variable, set center of the USA as center coords, data must be the polygon data, but cross check once, add layer based on your preferences
+
+//After the user clicks on "Load Selected Data" (For simplicity, only allow one file to be uploaded by the user, manually delete the file after a session for now)
+//Step 1: Get the file path name of the file that was uploaded
+//Step 2: The function Mapbox.js must be called, which takes one argument of the file path
+//Step 3: Go to the MapBox.js, define the function there. The rest of the requirement comments reside there
+//loadSelected
+//fetch('/models/api/v0.1/calibration/VIF/'+featureList+'+'+dataset).then(function (response) 
+$('#loadSelected').click(function () {
+    fetch('/loadSelected').then(function (response) {
+        if (response.ok) {
+            response.json().then(function (data) {
+                let file_path =  "{{ url_for('static', filename='uploads/user_session_polygon.geojson') }}";
+                $.getJSON(file_path, function (geojsondata) {
+                    $('#msg').html('<span style="color:red">SAKAAALL</span>');
+                    mapboxgl.accessToken = 'pk.eyJ1Ijoic2FubWlzYW4iLCJhIjoiY2sxOWxqajdjMDB2ZzNpcGR5aW13MDYzcyJ9.WsMnhXizk5z3P2C351yBZQ';
+                    let map = new mapboxgl.Map({
+                        container: 'model_map_panel',
+                        style: 'mapbox://styles/mapbox/light-v10',
+                        center: [-71.0589, 42.3601],
+                        minZoom: 2,
+                        zoom: 6,
+                        attributionControl: false,
+                        });
+                    map.boxZoom.disable();
+                    map.on('load', function () { //VS Add
+                        map.addSource('userupload', {
+                            'type': 'geojson',
+                            'data': geojsondata
+                            //'generateId': true // This ensures that all features have unique IDs
+                        });
+                        map.addLayer({
+                        'id': 'counties-fill',
+                        'type': 'fill',
+                        'source': 'userupload',
+                        'paint': {
+                            'fill-outline-color': 'rgba(0,0,255,0.7)',
+                            'fill-color': 'rgba(0,0,0,0.1)'
+                            }
+                        },
+                        ); 
+                    });               
+                
+                });
+            });
+        };
+    });
+});
+
+
+
+
+
+    
+
+
+
+
+    /* import geojson data */ ///VS ADD
+    // get selected dataset at first
+    $('#param_calibration_submit').click(function () {
+        document.getElementById("param_calibration_submit").disabled = true;
+        document.querySelector('#load').style.display="block";
+        $('#loading').css('visibility', 'visible');
+        let dataset_name = $('#dataset_list').val();
+        //console.log(dataset_name);
+        if (dataset_name === "georgia"){
+            file_path = "{{ url_for('static', filename='data/georgia_demo.geojson') }}";
+            visualCalibrationInterface.setDataset(dataset_name);
+        }else if (dataset_name === "chicago"){
+            file_path = "{{ url_for('static', filename='data/chicago_config_poly.geojson') }}";
+            visualCalibrationInterface.setDataset(dataset_name);
+        }
+        else if (dataset_name === "arizona"){ //VS: This could be a polygonized version of the entire area the user needs to analyze
+            file_path = "{{ url_for('static', filename='data/arizona_counties_polygon.geojson') }}";
+            visualCalibrationInterface.setDataset(dataset_name);            
+        }
+
+
+        $.getJSON(file_path, function (data) { //VS: Sends data required to be displayed on the original data table
+            /* go through all data properties */
+            let global_data_properties_list = [];
+            //console.log(data);
+            $.each(data['features'][0]['properties'], (index, element) => {
+                if(ignore_properties.indexOf(index) === -1) global_data_properties_list.push(index); //VS:  Fetching a list of avaiable numerical features
+            });
+
+            /* original data table */ //VS: This pushes the UID and county_name
+            let original_data = [];
+            let columns_data = [];
+            let UID_temp = {
+                field: 'UID',
+                title: 'UID',
+                sortable: 'true'
+            };
+            columns_data.push(UID_temp);
+            let county_temp = {
+                field: 'county_name',
+                title: 'Name'
+            }
+            columns_data.push(county_temp);
+
+            $.each(data['features'], (index, element) => {
+                let county_data = {
+                    UID: element.properties.UID,
+                    county_name: element.properties.county_name,
+                };
+                $.each(global_data_properties_list, (j, attr) => {
+                    county_data[attr] = visualCalibrationInterface.fomatFloat(element.properties[attr], 2);
+                    if(index === 0){
+                        let attr_temp = {
+                            field: attr,
+                            title: attr,
+                            sortable: 'true'
+                        }
+                        columns_data.push(attr_temp);
+                    }
+                });
+                original_data.push(county_data);
+            });
+            //console.log(original_data);
+            $('#original_data_table_id').bootstrapTable({
+                search: true,
+                iconSize: 'sm',
+                classes: 'table table-hover table-sm',
+                columns: columns_data,
+                data: original_data
+            });
+
+            /* generate global V2T data model */
+            let global_data_model = new V2T.V2TGlobalData(data, global_data_properties_list); //VS: Sending polygon shape file, aliong with the relevant column names to V2TGlobalData
+
+            // Phase 1 - generate global V2T data object and geojson data
+            let generate_V2T_global_object_dict = {
+                globalData: global_data_model,  //Conditioned data, only containing relevant feautres
+                geojson_data: data
+            }
+            visualCalibrationInterface.trigger('generate_V2T_global_object', generate_V2T_global_object_dict); //VS: Basically triggers generateGlobalDataObj in VisualCalibration.js
+
+            // Phase 2 - model parameter configurations, computing correlations, VIF
+            //$('#param_calibration_submit').click(function () {
+            /* construct raw feature list */
+            //let featureList_html = $('#hidden_feature_list').children();
+            let featureList = global_data_properties_list;
+            /*$.each(featureList_html, (index, element) => {
+                let feature = element.attributes.value.nodeValue;
+                featureList.push(feature);
+            });*/
+            visualCalibrationInterface.trigger('computing_configuration_diagnostic', featureList);
+            //});
+        });
+        /* END of read geojson */
+    }); // end of click
+
+    // Phase 3 - Y related visualizations
+    $('#sortable_Y_config').sortable({
+        connectWith: ".connectedSortable",
+        receive: function( event, ui ) {
+            let selected_feature_ui = ui.item;
+            if(selected_feature_ui.length > 0){
+                yselected=true;
+                 if(xselected && yselected)
+                 $('#request_model').tooltip('disable');
+            }
+            visualCalibrationInterface.trigger('drop_to_Y_list', selected_feature_ui);
+        },
+        cancel: ".list-group-item"
+    });
+
+    // Phase 4 - X related visualizations
+    $('#sortable_X_config').sortable({
+        connectWith: ".connectedSortable",
+        receive: function( event, ui ) {
+            xselected=true;
+            let selected_feature_ui = ui.item;
+            if(selected_feature_ui.length > 0){
+                xselected=true;
+                 if(xselected && yselected)
+                 $('#request_model').tooltip('disable');
+            }
+            
+            visualCalibrationInterface.trigger('drop_to_X_list', selected_feature_ui);
+        },
+        remove: function( event, ui ) {
+            let selected_feature_ui = ui.item;
+            if(visualCalibrationInterface.mapLayers_x.length === 1){
+                xselected=false;
+            }
+            visualCalibrationInterface.trigger('leave_X_list', selected_feature_ui);
+        }
+    });
+    $('#sortable_rawFeatures_config').sortable({
+        connectWith: ".connectedSortable"
+    });
+
+    //** Model analysis part **//
+    /* get model parameters before training */
+    $('#request_model').click(function () {
+        if(xselected && yselected){
+            $('#request_model').tooltip('disable');
+            $('#loading').css('visibility', 'visible');
+        document.querySelector('#load').style.display="none";
+        document.querySelector('#train').style.display="block";
+        $('#model_map_legend').css('left', '0.4vw');
+        $('#model_map_legend').css('bottom', '0.5vw');
+        let spatial_kernel = $('#spatial_kernel option:selected').text();
+        let model_type = $('#model_type option:selected').text();
+        let gwr_mgwr = $('#gwr_mgwr option:selected').text();
+        // get dependent Y
+        let dependent_Y = visualCalibrationInterface.dependent_y;
+        let dependent_Y_obj = visualCalibrationInterface.getFeatureDiagnoisticIndicatorObj(dependent_Y).obj;
+        let Y_data = [];
+        if(dependent_Y_obj.normalityCheckFlag === true){
+            //get transformed Y data
+            Y_data = dependent_Y_obj.transformed_Y_data.Y;
+        }else{
+            Y_data = dependent_Y_obj.normality_results.Y;
+        }
+        // get independent X
+        let X_list = visualCalibrationInterface.mapLayers_x;
+        let model_param = {
+            dependent_Y: dependent_Y,
+            Y_data: Y_data,
+            X_list: X_list,
+            spatial_kernel: spatial_kernel,
+            model_type: model_type,
+            gwr_mgwr: gwr_mgwr,
+            dataset: visualCalibrationInterface.dataset
+        };
+        // Phase 1 - Upload model training parameters and train the model
+        modelAnalysisInterface.trigger('generate_model_results', model_param);
+        // Phase 2 - Generate model analysis interface panels
+        }
+        else{
+            $('#request_model').tooltip('enable');
+                $('#request_model').tooltip('show')
+        }
+    });
+
+
+    /*** TEXT REPORT PART ***/
+    /** Toggle Text report panel **/
+    /* TODO: toggle styles changing of all visual components */
+    var reportPanelState = true;
+    $( "#show_report_panel" ).on( "click", function() {
+        if ( reportPanelState ) {
+            $('#report_container_id').show();
+            //$('#vast_container_id').css("width", "70%");
+        } else {
+            //$('#vast_container_id').css("width", "100%");
+            $('#report_container_id').hide();
+        }
+        reportPanelState = !reportPanelState;
+    });
+
+    $( "#report_container_id" ).draggable();
+
+    /* Drag visual components to the text report panel */
+    // Let the gallery items be draggable
+    let $draggable_obj = $('.draggable_obj');
+    $draggable_obj.draggable({
+        connectToSortable: "#text_report_content_new",
+        //cancel: ".drag-cancel", // clicking an icon won't initiate dragging
+        revert: 'invalid', // when not dropped, the item will revert back to its initial position
+        helper: function(event){
+            return $( "<div class='ui-widget-header' id='drag_helper'>Drag me to the report area</div>" );
+        },
+        cursor: "move",
+        cursorAt: { top: 1, left: 1 },
+        zIndex: 9999
+    });
+
+    $( "#text_report_content_new" ).sortable({
+        placeholder: "ui-state-highlight",
+        revert: true,
+        receive: function( event, ui ) {
+            let selected_feature_ui = ui.item.html();
+            $('#drag_helper').remove();
+            textGeneration.trigger('render_report_paragraph', selected_feature_ui);
+        },
+    });
+
+    let data_set_name = visualCalibrationInterface.dataset;
+    $('#text_editor_data_set_name').text(data_set_name);
+
+    $('#hiddenWindows').click(function(){
+        let hiddenList = modelAnalysisInterface.hiddenWinList;
+        $.each(hiddenList, (i,e) => {
+            $(e).toggle(500);
+        });
+    });
+
+    $('#exportPDF').click(function(){
+        textGeneration.exportPDF();
+        console.log('PDF exported');
+    });
+
+    function divClicked() {
+        var divHtml = $(this).html();
+        var editableText = $("<textarea style='width: 100%; min-height: auto;' />");
+        editableText.val(divHtml);
+        $(this).replaceWith(editableText);
+        editableText.focus();
+        // setup the blur event for this new textarea
+        editableText.blur(editableTextBlurred);
+    }
+
+    function editableTextBlurred() {
+        var html = $(this).val();
+        var viewableText = $("<h6 id='textCursor'>");
+        viewableText.html(html);
+        $(this).replaceWith(viewableText);
+        // setup the click event for this new div
+        $(viewableText).dblclick(divClicked);
+    }
+
+    $("#textCursor").dblclick(divClicked);
+
+    /* Add a new paragraph on report panel */
+    function newParagraphClicked() {
+        var divHtml = $(this).html();
+        var editableText = $("<textarea style='width: 100%; min-height: 100px;' />");
+        editableText.val(divHtml);
+        $(this).replaceWith(editableText);
+        editableText.focus();
+        // setup the blur event for this new textarea
+        editableText.blur(newParagraphBlurred);
+    }
+
+    function newParagraphBlurred() {
+        var html = $(this).val();
+        var viewableText = $("<p>");
+        viewableText.html(html);
+        $(this).replaceWith(viewableText);
+        // setup the click event for this new div
+        $(viewableText).dblclick(newParagraphClicked);
+    }
+
+
+    $('#new_paragraph_btn').click(function () {
+        new_paragraph_index = new_paragraph_index + 1;
+        let div_id = 'new'+new_paragraph_index;
+        let HTML_content = '<div id="'+div_id+'" class=\"report_paragraph\"></div>';
+        $("#text_report_content_new").append(HTML_content);
+        let editableText = $("<textarea style='width: 100%; min-height: 100px;' />");
+        $('#'+div_id).append(editableText);
+        editableText.focus();
+        editableText.blur(newParagraphBlurred);
+    });
+
+    $('#origin_refresh').click(function(){
+        $('#original_data_table_id').bootstrapTable('filterBy', {});
+    });
+
+    function createButton(parentNode, clickHandler, value) {
+        var button = document.createElement("input");
+        button.type = "button";
+        button.unselectable = true;
+        button.className = "unselectable badge badge-success mr-2 _caption_btn";
+        button.ontouchstart = button.onmousedown = function() {
+            clickHandler();
+            return false;
+        };
+        button.value = value;
+        parentNode.appendChild(button);
+        button = null;
+    }
+
+    if (!window.x) {
+        x = {};
+    }
+    x.Selector = {};
+    x.Selector.getSelected = function() {
+        var t = '';
+        if (window.getSelection) {
+            t = window.getSelection();
+        } else if (document.getSelection) {
+            t = document.getSelection();
+        } else if (document.selection) {
+            t = document.selection.createRange().text;
+        }
+        return t;
+    }
+
+    /* Popup right-click menu */
+    document.getElementById("external_info_content").oncontextmenu = function(event) {
+        event.preventDefault();
+        let menu = document.querySelector("#external_menu");
+        menu.style.left=event.clientX+'px';
+        menu.style.top=event.clientY+'px';
+        menu.style.display = "block";
+
+        return false;
+    }
+
+    document.onclick = function(event) {
+        document.querySelector('#external_menu').style.display = "none";
+    }
+
+</script>
+
+{%  endblock  %}

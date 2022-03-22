@@ -1,0 +1,13 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 205.34 154"
+  className="fa-scatter"
+>
+  <polygon points="13 141.48 13 0 0 0 0 141.48 0 154 13 154 205.34 154 205.34 141.48 13 141.48" />
+  <circle cx="78.5" cy="44.5" r="13.17" />
+  <circle cx="39.84" cy="113.5" r="13.17" />
+  <circle cx="91.67" cy="95.5" r="13.17" />
+  <circle cx="132.67" cy="85.5" r="13.17" />
+  <circle cx="177.67" cy="16.83" r="13.17" />
+  <circle cx="169.34" cy="113.5" r="13.17" />
+</svg>

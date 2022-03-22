@@ -1,0 +1,36 @@
+{%  extends  "layout.html"  %}
+{%  block  body  %}
+    <!-- Sidebar -->
+    <!-- sidebar menu area start -->
+    <div class="sidebar-menu">
+        <div class="sidebar-header">
+            <div class="logo" style="color: aliceblue; ">
+                <h4>VAST2Text</h4>
+            </div>
+        </div>
+        <div class="main-menu">
+            <div class="menu-inner">
+                <nav style="color: #f8f9fa;">
+                    <h1>Upload a geojson file</h1>
+                    <form action="" enctype='multipart/form-data' method='POST'>
+                        <input type="file" name="file">
+                        <input type="submit" value="upload">
+                    </form>
+                </nav>
+            </div>
+        </div>
+    </div>
+    <!-- sidebar menu area end -->
+    <!-- interface content -->
+    <div id="main-content">
+        <div class="container-fluid vh-100" style="height: 100%;">
+            <div class="card" id="init-alart">
+                <div class="card-body">
+                    <h1>Please select at least one variable to start.</h1>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- interface content end-->
+
+{%  endblock  %}
