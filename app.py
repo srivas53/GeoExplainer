@@ -26,6 +26,7 @@ from werkzeug.utils import secure_filename
 import os
 from os import listdir
 from os.path import isfile, join
+from shapely.geometry import MultiPoint
 
 
 app = Flask(__name__)
@@ -232,16 +233,33 @@ def upload_file():
         resp.status_code = 400
         return resp
 
-@app.route('/loadSelected', methods=['GET']) #Imports the shape file that was uploaded by the user, converts it into a geojson, stores it in the same, and returens the filepath
-def return_uploaded_filename(): #Try and remove non numerical features as well
-    fileNames = [f for f in listdir(app.config['UPLOAD_FOLDER']) if f.endswith('.' + "shp")]
+@app.route('/loadSelected', methods=['GET']) #Imports the shape file that was uploaded by the user, converts it into a geojson, stores it in the same, and returns the filepath
+def return_uploaded_filename(): 
+    fileNames = [f for f in listdir(app.config['UPLOAD_FOLDER']) if (f.endswith('.' + "shp")) or (f.endswith('.' + "geojson"))]
     if len(fileNames)!=0: 
         absolutePath = app.config['UPLOAD_FOLDER'] + '/' + fileNames[0]
-        #print(absolutePath)
+        
+        #Read the .shp file
         inputFile = gp.read_file(absolutePath)
+        
+        #Calculate the centroid of the imported file, to be sent with the response
+        #for this, we calculate centroid of each polygon that we have in the shape file, and then, calculate the centroid of the resultant points
+        inputFile['x']=inputFile["geometry"].centroid.x
+        inputFile['y']=inputFile["geometry"].centroid.y
+        listOfCentroids = []
+        for row in inputFile.itertuples():
+            listOfCentroids.append((row.x,row.y))
+            
+        finalPoints = MultiPoint(listOfCentroids)
+        finalCenter = [finalPoints.centroid.x,finalPoints.centroid.y]
         inputFile.to_file(os.path.join(app.config['UPLOAD_FOLDER'], 'user_session_polygon.geojson'), driver='GeoJSON')
-        #print(len(inputFile))
-        resp = jsonify({'message' : 'GeoJson Created'})
+    #         normality_results = {
+    #     'p_value': format(p_value, '.5f'),
+    #     'skewness': format(skewness, '.5f'),
+    #     'Y': log_Y.tolist()
+    # }
+        final_centroid = {'resultant_centroid' : finalCenter, 'message': 'GeoJson Created'}
+        resp = jsonify(final_centroid)
         return resp
 
 

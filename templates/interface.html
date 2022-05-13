@@ -369,7 +369,8 @@ $(document).ready(function (e) {
                 data: form_data,
                 type: 'post',
                 success: function (response) { // display success response
-                    $('#msg').html('');
+                    //$('#msg').html('');
+                    $('#msg').css('color', 'red');
                     $.each(response, function (key, data) {                         
                         if(key !== 'message') {
                             $('#msg').append(key + ' -> ' + data + '<br/>');
@@ -400,14 +401,16 @@ $('#loadSelected').click(function () {
     fetch('/loadSelected').then(function (response) {
         if (response.ok) {
             response.json().then(function (data) {
+                let centroid = data.resultant_centroid;
+                console.log(centroid + "THIS IS CENTROID");
                 let file_path =  "{{ url_for('static', filename='uploads/user_session_polygon.geojson') }}";
                 $.getJSON(file_path, function (geojsondata) {
-                    $('#msg').html('<span style="color:red">SAKAAALL</span>');
+                    $('#msg').html('<span style="color:red">Data Loaded!</span>');
                     mapboxgl.accessToken = 'pk.eyJ1Ijoic2FubWlzYW4iLCJhIjoiY2sxOWxqajdjMDB2ZzNpcGR5aW13MDYzcyJ9.WsMnhXizk5z3P2C351yBZQ';
                     let map = new mapboxgl.Map({
                         container: 'model_map_panel',
                         style: 'mapbox://styles/mapbox/light-v10',
-                        center: [-71.0589, 42.3601],
+                        center: centroid,
                         minZoom: 2,
                         zoom: 6,
                         attributionControl: false,
@@ -420,7 +423,7 @@ $('#loadSelected').click(function () {
                             //'generateId': true // This ensures that all features have unique IDs
                         });
                         map.addLayer({
-                        'id': 'counties-fill',
+                        'id': 'parcels_fill',
                         'type': 'fill',
                         'source': 'userupload',
                         'paint': {
@@ -428,7 +431,28 @@ $('#loadSelected').click(function () {
                             'fill-color': 'rgba(0,0,0,0.1)'
                             }
                         },
+                        );
+                        //New Layer
+                        map.addLayer({
+                        'id': 'cost_fill',
+                        'type': 'fill',
+                        'source': 'userupload',
+                        'layout': {},
+                        'paint': { //Add a choropleth for cost, heat map for mammal 
+                            'fill-color': [
+                            'interpolate',
+                            ['linear'],
+                            ['get', 'cost'],
+                            0,
+                            '#F2F12D',
+                            20000,
+                            '#E6B71E'
+                        ],
+                            'fill-opacity': 0.5}
+                        //'filter': ["get", "cost"]
+                        },
                         ); 
+                                                
                     });               
                 
                 });

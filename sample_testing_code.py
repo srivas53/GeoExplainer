@@ -5,103 +5,159 @@ Created on Fri Mar 11 13:20:12 2022
 @author: vsriva11
 """
 
-import geopandas
-
-from werkzeug.utils import secure_filename
-
-#Import a generic Arizona Dataset, which has county subdivision data, along with total land area, and total water area
-
-myshpfile = geopandas.read_file(r"C:\Users\vsriva11\Desktop\VADER Lab\GeoExplainer-dev-main\static\data\cb_2020_04_cousub_500k\cb_2020_04_cousub_500k.shp")
-myshpfile.rename(columns={'GEOID': 'UID', 'NAME': 'county_name', 'NAMELSADCO': 'county','STATE_NAME': 'state_name'}, inplace=True)
-
-myshpfile=myshpfile[['UID','county_name','county','state_name','ALAND','AWATER','geometry']]
-myshpfile['UID']=myshpfile['UID'].astype(int)
+import geopandas as gp
+from shapely.geometry import MultiPoint
 
 
-
-#Convert the polygon type geometry to point type geometry by calculating centroids
-points = myshpfile.copy()
-points['geometry'] = points['geometry'].centroid
-
-points['Long_'] = points.geometry.x
-points['Lat'] = points.geometry.y
-
-points.to_file('arizona_counties_point.geojson', driver='GeoJSON')
-points.drop('geometry',axis=1).to_csv('arizona_counties.csv',index=False)
-
-myshpfile = myshpfile.merge(points[['UID','Long_','Lat']],on='UID')
-
-myshpfile.to_file('arizona_counties_polygon.geojson', driver='GeoJSON')
-
-# georgia = geopandas.read_file(r"C:\Users\vsriva11\Desktop\VADER Lab\GeoExplainer-dev-main\static\data\georgia_shape\G_utm.shp")
-# chicago = geopandas.read_file(r"C:\Users\vsriva11\Desktop\VADER Lab\GeoExplainer-dev-main\static\data\airbnb_shape\airbnb_Chicago 2015.shp")
-
-#Import biodiversity related data of the entire USA
-us_tree_priorities= geopandas.read_file(r"C:\Users\vsriva11\Desktop\VADER Lab\GeoExplainer-dev-main\static\data\biodiversity_layers_data_USA\GeoTIFFs_and_shapefiles\Trees_priorities.shp")
+myshpfile = gp.read_file(r"C:\Users\vsriva11\Desktop\VADER Lab\GeoExplainer\static\uploads\NHDArea.shp")
 
 
-
-#Import tif file for tree richness
-#filter it to contain only data in Arizona (figure out how to filter raster data by latitude and longitue values)
-#Need tofigure out how to send filtered raster data with improved resolution to FE for as it is dislay
-import geopandas
-import rasterio as rio
-from rasterio.plot import show
-from shapely.geometry import Point
-import numpy as np
-from rasterio.warp import transform
-from rasterio.crs import CRS
+myshpfileCopy = myshpfile.copy()
 
 
+#Loop through each row, record centrouid of each polygon, and the, calculate cnetroid ofall the resultant piounts, retun to the api as a response
+
+#Create new columns x and y, which will contain x and y coords of centroid of each polygon
+
+myshpfileCopy['x']=myshpfileCopy["geometry"].centroid.x
+myshpfileCopy['y']=myshpfileCopy["geometry"].centroid.y
+
+#create an empty list that will contain the set of centroid coordinate points
+
+listOfCentroids = []
 
 
-treeRichnessUSA = rio.open(r"C:\Users\vsriva11\Desktop\VADER Lab\GeoExplainer-dev-main\static\data\biodiversity_layers_data_USA\GeoTIFFs_and_shapefiles\Trees_total_richness_mercator.tif")
+for row in myshpfileCopy.itertuples():
+    listOfCentroids.append((row.x,row.y))
+
+finalPoints = MultiPoint(listOfCentroids)
+print(finalPoints.centroid.x)
+print(finalPoints.centroid.y)
+
+finalCenter = [finalPoints.centroid.x,finalPoints.centroid.y]
+    
+finalCenter  
 
 
-treeRichnessUSA.meta #Raster/cell/grid dimensions: 10000X10000 (implies 10000m X10000m/10km X10km in spatial extent)
-#check the coordinate reference system 
-treeRichnessUSA.crs
+    
 
-#check bounds(the numbers define the map’s bounding box in units of meters relative to some origin that is defined by the cr,#left, bottom, right, or top (corresponding to xmin, ymin, xmax, and ymax, respectively)s)
-treeRichnessUSA.bounds
-
-#Check pixel size (by convention, the origin is defined as the top-left corner )
-treeRichnessUSA.transform
-
-#In this case, 1 different band is available; each band represents a grayscale map for a specific wavelength region
-treeRichnessUSA.indexes
-
-img = treeRichnessUSA.read(1)
+#Establish a connecton to Mongo
 
 
-#show(imgdata*3)  # factor 3 to increase brightness
-show(treeRichnessUSA)
+from pymongo import MongoClient
+import pandas as pd
+import geopandas as gp
+from shapely.geometry import MultiPoint
+from shapely.geometry import shape
+import json
+
+def _connect_mongo(host, port, username, password, db):
+    """ A util for making a connection to mongo """
+
+    if username and password:
+        mongo_uri = 'mongodb://%s:%s@%s:%s/%s' % (username, password, host, port, db)
+        conn = MongoClient(mongo_uri)
+    else:
+        conn = MongoClient(host, port)
 
 
+    return conn[db]
 
 
+def read_mongo(db, collection, query={}, host='localhost', port=27017, username=None, password=None, no_id=True):
+    """ Read from Mongo and Store into DataFrame """
 
-#Try changing the coordinate system
+    # Connect to MongoDB
+    db = _connect_mongo(host=host, port=port, username=username, password=password, db=db)
 
-#Done in Command line, using rio warp --resampling bilinear --dst-crs EPSG:3857 landsat5_stack.tif landsat5_mercator.tif
- 
+    # Make a query to the specific DB and Collection
+    cursor = db[collection].find(query)
 
-from os import listdir
-from os.path import isfile, join
-UPLOAD_FOLDER = 'static/uploads'
-mypath = r"C:\Users\vsriva11\Desktop\VADER Lab\GeoExplainer-dev-main\static\uploads"
-onlyfiles = [f for f in listdir(mypath) if isfile(join(mypath, f))]
+    # Expand the cursor and construct the DataFrame
+    df =  gp.GeoDataFrame(list(cursor))
 
+    # Delete the _id
+    # if no_id:
+    #     del df['_id']
 
-
-myshpfile2 = geopandas.read_file(r"C:\Users\vsriva11\Desktop\VADER Lab\GeoExplainer-dev-main\static\data\cb_2020_04_cousub_500k\cb_2020_04_cousub_500k.shp")
-
-
-
-
+    return df
 
 
+#db = client.eco_region
+#collection = db.MTParcel_layer1and2
 
+montanaData = read_mongo("eco_region", "MTParcel_layer1and2")
+
+
+#montanaData2 = montanaData.iloc[0:4000,]
+
+
+for row in montanaData.itertuples():
+    montanaData.at[row.Index, "geometry"] = shape(row.geometry)
+    #row.geometry = shape(row.geometry)
+    #listOfCentroids.append((row.x,row.y))
+    
+montanaData['x'] = ''
+montanaData['y'] = ''
+issue_id = []
+
+for row in montanaData.itertuples():
+    try:
+        montanaData.at[row.Index, "x"] = row.geometry.centroid.x
+        montanaData.at[row.Index, "y"] = row.geometry.centroid.y
+    except AttributeError:
+        issue_id.append(row._id)
+        continue
+        
+        
+    
+# sampleGeojson['x']=sampleGeojson["geometry"].centroid.x
+# sampleGeojson['y']=sampleGeojson["geometry"].centroid.y
+
+# listOfCentroids = []
+
+
+# for row in sampleGeojson.itertuples():
+#     listOfCentroids.append((row.x,row.y))
+
+# finalPoints = MultiPoint(listOfCentroids)
+# print(finalPoints.centroid.x)
+# print(finalPoints.centroid.y)
+
+# finalCenter = [finalPoints.centroid.x,finalPoints.centroid.y]
+#sampleGeojson.to_file('user_session_polygon.geojson', driver='GeoJSON')
+
+#sortColumn
+montanaData['sortColumn'] = montanaData['x'] + montanaData['y']
+montanaData = montanaData.sort_values('sortColumn',ascending = 'True')
+
+montanaDataSubSet = montanaData.iloc[0:4000,]
+
+montanaDataSubSet['PARCELID'] = ''
+montanaDataSubSet['SHAPE_Leng'] = ''
+montanaDataSubSet['roadAver'] = ''
+montanaDataSubSet['cost'] = ''
+
+for row in montanaDataSubSet.itertuples():
+    montanaDataSubSet.at[row.Index, "PARCELID"] = row.properties['PARCELID']
+    montanaDataSubSet.at[row.Index, "SHAPE_Leng"] = row.properties['SHAPE_Leng']
+    montanaDataSubSet.at[row.Index, "roadAver"] = row.properties['roadAver']
+    montanaDataSubSet.at[row.Index, "cost"] = row.properties['cost']
+
+montanaDataSubSet['cost'] = montanaDataSubSet['cost'].astype(int)
+montanaDataSubSet['roadAver'] = montanaDataSubSet['roadAver'].astype(float)
+montanaDataSubSet['SHAPE_Leng'] = montanaDataSubSet['SHAPE_Leng'].astype(float)
+
+montanaDataSubSet[['geometry',
+ 'PARCELID',
+ 'SHAPE_Leng',
+ 'roadAver',
+ 'cost']].to_file('MT_Parcel_Layer_Sample.geojson', driver='GeoJSON')
+
+#Make this work for Mapbox
+
+
+sampleGeojson = gp.read_file(r"C:\Users\vsriva11\Desktop\VADER Lab\GeoExplainer\static\data\MT_Parcel_Layer_Sample.geojson")
 
 
 
