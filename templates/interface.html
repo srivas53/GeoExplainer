@@ -432,26 +432,59 @@ $('#loadSelected').click(function () {
                             }
                         },
                         );
-                        //New Layer
+                        //New Layer - Cost per parcel
                         map.addLayer({
                         'id': 'cost_fill',
                         'type': 'fill',
                         'source': 'userupload',
-                        'layout': {},
+                        'layout': {"visibility": "none"},
                         'paint': { //Add a choropleth for cost, heat map for mammal 
                             'fill-color': [
                             'interpolate',
                             ['linear'],
                             ['get', 'cost'],
                             0,
-                            '#F2F12D',
-                            20000,
-                            '#E6B71E'
+                            '#40F40C',
+                            179364,
+                            '#F4ED0C',
+                            960033,
+                            '#E86643'
                         ],
                             'fill-opacity': 0.5}
                         //'filter': ["get", "cost"]
                         },
-                        ); 
+                        );
+
+                        map.addLayer({
+                        'id': 'tree_fill',
+                        'type': 'fill',
+                        'source': 'userupload',
+                        'layout': {"visibility": "visible"},
+                        'paint': { 
+                            'fill-color': [
+                            'interpolate',
+                            ['linear'],
+                            ['get', 'averagetree'],
+                            0,
+                            '#F4BC0C',
+                            23.50,
+                            '#FFF704',
+                            27.67,
+                            '#CDF92B',
+                            30.33,
+                            '#90DE26',
+                            34.00,
+                            '#00C30C'
+
+
+                        ],
+                            'fill-opacity': 0.5}
+                        //'filter': ["get", "cost"]
+                        },
+                        );
+                      
+
+
                                                 
                     });               
                 
