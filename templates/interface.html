@@ -111,7 +111,7 @@
     <div class="config_wrapper" id="left_wrapper">
         <!------------------------------------------------>
         <!-- Model config params -->
-        <div class="param_config_list_container" style="padding: 0; margin-bottom: 8px;" id="model_param_config_win">
+        <!-- <div class="param_config_list_container" style="padding: 0; margin-bottom: 8px;" id="model_param_config_win">
             <div class="param_config_list_content_head" style="height: 31px;">
                 <p class="_topic" style="float: left;">Model configuration</p>
                 <a type="button" id="request_model" class="badge badge-success mr-2" style="float: right; font-size: 13px; margin-top: 3px;" data-toggle="tooltip" data-placement="top" title="select Dependent and Independent varaiables">Train model</a>
@@ -140,25 +140,25 @@
                     </select>
                 </div>
             </div>
-        </div>
+        </div> -->
         <!-- END of model config params -->
         <div class="param_config_list_container" style="margin-bottom: 8px;" id="model_variable_config_win">
-            <div class="param_config_list_content" style="margin-bottom: 8px;">
+            <!-- <div class="param_config_list_content" style="margin-bottom: 8px;"> -->
                 <!-- Dependent Y list -->
-                <div class="param_config_list_content_head">
+                <!-- <div class="param_config_list_content_head">
                     <p class="_topic">Dependent Variable Y</p>
                 </div>
-                <ul class="list-group connectedSortable" id="sortable_Y_config" style="min-height: 50px; background-color: #ffffff;"></ul>
+                <ul class="list-group connectedSortable" id="sortable_Y_config" style="min-height: 50px; background-color: #ffffff;"></ul> -->
                 <!-- END of dependent Y list -->
                 <!-- Independent X list -->
-                <div class="param_config_list_content_head">
+                <!-- <div class="param_config_list_content_head">
                     <p class="_topic">Independent Variable X</p>
                 </div>
                 <div style="max-height: 200px; overflow: auto;">
                     <ul class="list-group connectedSortable" id="sortable_X_config" style="min-height: 50px; background-color: #ffffff;"></ul>
-                </div>
+                </div> -->
                 <!-- END of independent X list -->
-            </div>
+            <!-- </div> -->
             <!-- Original feature list -->   <!-- VS: Disable-->   
             <div class="param_config_list_content">
                 <div class="param_config_list_content_head">
@@ -171,7 +171,7 @@
             <!-- END of original feature list -->
         </div>
         <!-- Original Data Table -->
-        <div class="original_data_table_container" id="original_data_table_container">
+        <!-- <div class="original_data_table_container" id="original_data_table_container">
             <div class="original_data_table_content">
                 <h6 id="original_table_header" style="float: left; font-size:14px; margin-top: 8px">Original Data Table:</h6>
                 <a type="button" id="origin_refresh" class="badge badge-success ml-2" style="float: right; font-size: 13px; margin-top: 14px;"><i class="fa fa-refresh"></i></a>
@@ -180,86 +180,11 @@
                        data-toolbar="#original_table_header"
                 ></table>
             </div>
-        </div>
+        </div> -->
         <!-- END of Original data table -->
     </div>
     <!-- model config VIS -->
-    <div class="config_VIS_wrapper" id="upper_wrapper">
-        <!-- Model analysis panels -->
-        <div class="model_diagnostic_container" id="model_diagnostic_container" style="display: none;">
-            <div class="model_diagnostic_head" id="model_diagnostic_head">
-                <p class="_topic">Model Explanation</p>
-            </div>
-            <div class="model_diagnostic_notation" id="model_diagnostic_notation"></div>
-        </div>
-        <!--END of model analysis panels-->
 
-        <!-- External information panel -->
-        <div class="external_info_container" id="external_info_container" style="display: none;">
-            <div class="external_info_head" id="external_info_head">
-                <span class="_topic" style="float: left">External Information</span>
-                <!--<a type="button" id="copy_external_btn" class="badge badge-success mr-2" style="float: right; font-size: 13px;">Clone</a>-->
-            </div>
-            <div class="external_info_content" id="external_info_content"></div>
-        </div>
-        <!-- END of external information panel -->
-
-        <!-- Histogram panel -->
-        <div class="histogram_Y" id="histogram_Y_id" style="visibility: hidden;">
-            <div class="histogran_Y_content_wrapper">
-                <div class="histogram_Y_head" id="histogram_Y_head_id">
-                    <p class="_topic">Distribution of Y</p>
-                </div>
-                <div class="histogram_Y_content" id="histogram_Y_content_id"></div>
-            </div>
-            <div class="histogram_Y_notation" id="histogram_Y_notation_id">
-                <ul class="list-unstyled mb-2" id="histogram_Y_content_table" style="margin-left: 5px; margin-right: 5px; display: none;">
-                    <li>Normality test (95%): <span id="normality_p_value" style="float: right;"></span></li>
-                    <li>Skewness: <span id="skew_value" style="float: right;"></span></li>
-                </ul>
-                <p></p>
-            </div>
-        </div>
-        <!-- END of histogram panel -->
-        <!-- Correlation of Y and X panel -->
-        <div class="correlation_scatter_container" id="correlation_scatter_container" style="visibility: hidden;">
-            <div class="correlation_scatter_content_wrapper">
-                <div class="correlation_scatter_head" id="correlation_scatter_head">
-                    <p class="_topic">Correlation of Y and X</p>
-                </div>
-
-                <div class="correlation_scatter_content" id="correlation_scatter_content_id"></div>
-            </div>
-
-            <div class="correlation_scatter_notation" id="correlation_scatter_notation_id">
-                <ul class="list-unstyled mb-2" id="correlation_scatter_table" style="margin-left: 5px; margin-right: 5px; display: none;">
-                    <li>Pearson coefficient: <span id="pearson_value" style="float: right; margin-left: 10px;"></span></li>
-                    <li>p-value (95%): <span id="pearson_p_value" style="float: right;"></span></li>
-                </ul>
-                <div id="xy_correlation_annotation"></div>
-            </div>
-        </div>
-        <!-- END of correlation of Y and X panel -->
-        <!-- Scatter Matrix panel -->
-        <div class="scatter_matrix_container" id="scatter_matrix_container_id">
-            <div class="scatter_matrix_notation" id="scatter_matrix_notation_id">
-                <b><p id="highVIF_obj_notation"></p></b>
-            </div>
-            <div class="scatter_matrix_head" id="scatter_matrix_head">
-                <p class="_topic">Correlations of X</p>
-            </div>
-            <!--<div class="scatter_matrix_wrapper" style="display: none;">
-                <div class="scatter_matrix_head" id="scatter_matrix_head">
-                    <p class="_topic">Correlations of X</p>
-                </div>
-                <div class="scatter_matrix_notation" id="scatter_matrix_notation_id" style='display: none;'>
-                    <b><p id="highVIF_obj_notation"></p></b>
-                </div>
-            </div>-->
-            <div class="scatter_matrix_content" id="scatter_matrix_content_id"></div>
-        </div>
-        <!-- END of scatter matrix panel -->
-    </div>
     <!-- END of model config VIS -->
     <!-- END of main VAST panel -->
 </div>
@@ -279,6 +204,11 @@
 <div id="external_menu">
     <div type="button" id="copy_external_btn" class="external_menu">Copy to report panel</div>
 </div>
+
+<!-- VS ADD CRITICAL:: Add a section that creates dynamic feature list, to be displayed for visualization of layers -->
+
+
+
 
 <!-- MAIN JS PART -->
 <script type="text/javascript">
@@ -345,7 +275,9 @@ $('#request_model').tooltip('disable');
         $('#model_map_legend').css('bottom', '0.5vw');
     });
 
-    //Enabling the user to upload their own files (VS Add)
+
+
+////////Enabling the user to upload their own files (VS Add)
 $(document).ready(function (e) {
         $('#uploadFile').on('click', function () {
             var form_data = new FormData();
@@ -478,7 +410,7 @@ $('#loadSelected').click(function () {
 
 
                         ],
-                            'fill-opacity': 0.5}
+                            'fill-opacity': 0.6}
                         //'filter': ["get", "cost"]
                         },
                         );

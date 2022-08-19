@@ -5,42 +5,6 @@ Created on Fri Mar 11 13:20:12 2022
 @author: vsriva11
 """
 
-import geopandas as gp
-from shapely.geometry import MultiPoint
-
-
-myshpfile = gp.read_file(r"C:\Users\vsriva11\Desktop\VADER Lab\GeoExplainer\static\uploads\NHDArea.shp")
-
-
-myshpfileCopy = myshpfile.copy()
-
-
-#Loop through each row, record centrouid of each polygon, and the, calculate cnetroid ofall the resultant piounts, retun to the api as a response
-
-#Create new columns x and y, which will contain x and y coords of centroid of each polygon
-
-myshpfileCopy['x']=myshpfileCopy["geometry"].centroid.x
-myshpfileCopy['y']=myshpfileCopy["geometry"].centroid.y
-
-#create an empty list that will contain the set of centroid coordinate points
-
-listOfCentroids = []
-
-
-for row in myshpfileCopy.itertuples():
-    listOfCentroids.append((row.x,row.y))
-
-finalPoints = MultiPoint(listOfCentroids)
-print(finalPoints.centroid.x)
-print(finalPoints.centroid.y)
-
-finalCenter = [finalPoints.centroid.x,finalPoints.centroid.y]
-    
-finalCenter  
-
-
-    
-
 #MT Parcel Layer Data: 
 #Establish a connecton to Mongo
 
@@ -191,7 +155,9 @@ montanaDataSubSet["averagemammal"] = montanaDataSubSet['averagemammal'].astype(f
 
 #montanaDataSubSet['averagefish'] = montanaDataSubSet['averagefish'].interpolate()
 
+#X is longitude, Y is Latitude
 
+montanaDataSubSet = montanaDataSubSet.rename(columns={'x': 'Long_', 'y': 'Lat'})
 montanaDataSubSet[['geometry',
  'PARCELID',
  'SHAPE_Leng',
@@ -206,11 +172,17 @@ montanaDataSubSet[['geometry',
  'layer1paDist',
  'layer2paDist',
  'paAver',
- 'averHyDist','averagemammal']].to_file('MT_Parcel_Layer_Sample.geojson', driver='GeoJSON')
+ 'averHyDist','averagemammal', 'Long_','Lat']].to_file('MT_Parcel_Layer_Sample.geojson', driver='GeoJSON')
+
+#montanaDataSubSet.to_json()
 
 #Make this work for Mapbox
+listOfCentroids = []
+for row in montanaDataSubSet.itertuples():
+    listOfCentroids.append((row.Long_,row.Lat))
 
-
+finalPoints = MultiPoint(listOfCentroids)
+finalCenter = [finalPoints.centroid.x,finalPoints.centroid.y]
 sampleGeojson = gp.read_file(r"C:\Users\vsriva11\Desktop\VADER Lab\GeoExplainer\static\data\MT_Parcel_Layer_Sample.geojson")
 
 
